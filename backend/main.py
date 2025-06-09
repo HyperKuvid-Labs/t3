@@ -56,7 +56,7 @@ app.add_middleware(
 # models/gemini-2.0-pro-exp
 # models/gemini-2.0-pro-exp-02-05
 
-genai.configure(api_key="AIzaSyAb56f8gsiKgrg7ry3UWcuiDbGQsLMFJj0")
+genai.configure(api_key="get_your_api_key")
 
 def gemini_flash_resp(query : str):
     prompt = f"""
