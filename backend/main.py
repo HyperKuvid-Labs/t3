@@ -8,7 +8,7 @@ import string
 from tqdm import tqdm
 import subprocess
 from prisma import Prisma
-from prisma.models import User, Model, Conversation, QueryResp
+from prisma.models import User, ModelThing, Conversation, QueryResp
 import asyncio
 from passlib.context import CryptContext
 from dotenv import load_dotenv
@@ -23,6 +23,7 @@ from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import Optional
+import bcrypt
 
 oauth = OAuth()
 
@@ -38,6 +39,7 @@ oauth.register(
     access_token_url='https://oauth2.googleapis.com/token',
     authorize_url='https://accounts.google.com/o/oauth2/v2/auth',
     api_base_url='https://www.googleapis.com/',
+    jwks_uri='https://www.googleapis.com/oauth2/v3/certs',
     client_kwargs={
         'scope': 'openid email profile'
     }
@@ -105,11 +107,10 @@ genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 # class Model(BaseModel):
 
-# class User(BaseModel):
-#     id : int
-#     email : str
-#     username : str
-#     pwdhash : str
+class UserModel(BaseModel):
+    username : str
+    password : str
+    email : str
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGO")
@@ -118,6 +119,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = os.getenv("TTL_TOKEN")
 class Token(BaseModel):
     access_token : str
     token_type : str
+
+class UserLoginModel(BaseModel):
+    username : str
+    password : str
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login-jwt")
@@ -273,13 +278,15 @@ def ollama_phi_resp(query : str, emotion : str):
         return f"There was some issue genrating the content with ollama phi: {result.stderr}"
     
 def verify_pwd(pwd : str, hpwd : str):
-    return pwd_context.verify(pwd, hpwd)
+    return bcrypt.checkpw(pwd.encode('utf-8'), hashed_password=hpwd.encode('utf-8'))
 
 def hash_password(pwd : str):
-    return pwd_context.hash(pwd)
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(pwd.encode('utf-8'), salt=salt)
+    return hashed.decode('utf-8')
 
-def authenticate_user(username: str, password: str):
-    user = prisma.user.find_first(
+async def authenticate_user(username: str, password: str):
+    user = await prisma.user.find_first(
         where={"username": username}
     )
     if user and verify_pwd(password, user.passwordHash):  
@@ -374,7 +381,7 @@ def query_ollama(query : str, emotion : str):
 
 @app.get("/login/google")
 async def signup(request : Request):
-    redirect_uri = request.url_for("auth_google")
+    redirect_uri = "http://localhost:8000/auth/google"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @app.get("/auth/google")
@@ -392,8 +399,8 @@ async def auth_google(request : Request):
     return RedirectResponse(url="/")
 
 @app.post("/login-jwt")
-async def login_jwt(formData : OAuth2PasswordRequestForm = Depends()):
-    user = authenticate_user(formData.username, formData.password)
+async def login_jwt(formData : UserLoginModel):
+    user = await authenticate_user(formData.username, formData.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -405,17 +412,45 @@ async def login_jwt(formData : OAuth2PasswordRequestForm = Depends()):
     return {"access_token" : access_token, "token_type" : "bearer"}
 
 @app.post("/register")
-async def register(username: str, password: str, email: str):
-    hashed = hash_password(password)
-    user = await prisma.user.create(
-        data={
-            "username": username,
-            "email": email,
-            "passwordHash": hashed,  # Field name matches schema
-            "authProvider": "jwt"
+async def register(user_data: UserModel):
+    try:
+        # Check if user already exists
+        existing_user = await prisma.user.find_unique(
+            where={"email": user_data.email}
+        )
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this email already exists"
+            )
+        
+        hashed = hash_password(user_data.password)
+        user = await prisma.user.create(
+            data={
+                "username": user_data.username,
+                "email": user_data.email,
+                "passwordHash": hashed,
+                "authProvider": "jwt"
+            }
+        )
+        
+        return {
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "authProvider": user.authProvider
         }
-    )
-    return user
+        
+    except Exception as e:
+        if "already exists" in str(e):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User already exists"
+            )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Registration failed"
+        )
 
 @app.get("/logout")
 async def logout(request: Request):

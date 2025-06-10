@@ -11,7 +11,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  url      = "postgresql://chats_owner:npg_VsuSd9Nzw8CI@ep-cool-bar-a1hxk2iv-pooler.ap-southeast-1.aws.neon.tech/chats?sslmode=require"
 }
 
 enum ModelType {
@@ -36,7 +36,7 @@ enum ModelNameOnline {
 model User {
   id    Int     @id @default(autoincrement())
   email String  @unique
-  name  String?
+  username String?
   passwordHash String
   QueryResps QueryResp[]
   createdAt DateTime @default(now())
@@ -46,7 +46,7 @@ model User {
   authId String?
 }
 
-model Model {
+model ModelThing {
   modelId Int @id @default(autoincrement())
   type ModelType @default(ollama)
   name ModelNameOllama @default(gemma3_27b)
@@ -68,7 +68,7 @@ model QueryResp {
   id Int @id @default(autoincrement())
   query String
   result String
-  ModelUsed Model @relation(fields: [modelId], references: [modelId])
+  ModelUsed ModelThing @relation(fields: [modelId], references: [modelId])
   modelId Int
   user User @relation(fields: [userId], references: [id])
   userId Int
