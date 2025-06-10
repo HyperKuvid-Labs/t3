@@ -417,5 +417,10 @@ async def register(username: str, password: str, email: str):
     )
     return user
 
+@app.get("/logout")
+async def logout(request: Request):
+    request.session.clear()
+    return RedirectResponse(url="/")
 
-
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
