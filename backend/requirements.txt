@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-google-geneartiveai
+google-generativeai
 tqdm
-subprocess
+# subprocess
 prisma
