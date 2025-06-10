@@ -9,8 +9,12 @@ import string
 import json
 from tqdm import tqdm
 import subprocess
+from prisma import Prisma
+import asyncio
 
 app = FastAPI()
+
+prisma = Prisma()
 
 app.add_middleware(
     CORSMiddleware,
@@ -19,6 +23,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def startup():
+    await prisma.connect()
+    print("Successfully connected to Prisma database.")
+
+@app.on_event("shutdown")
+async def shutdown():
+    await prisma.connect()
+    print("Prisma gracefully disconnected. Thank You!")
 
 #models
 # models/embedding-gecko-001
@@ -58,22 +72,22 @@ app.add_middleware(
 
 genai.configure(api_key="get_your_api_key")
 
-def gemini_flash_resp(query : str):
-    prompt = f"""
-        This is the query from the user: {query}
-
-        Answer it more breifly and in a way any layman can understand if any complex topics arise.
-
-        Otherwise maintain the tempo jovially, and make it sound like a conversation between two friends.
-    """
-
-    resp = genai.GenerativeModel("gemini-2.5-flash-preview-05-20").generate_content(
-        contents = prompt
+def gemini_flash_resp(query: str, emotion: str = "") -> str:
+    prompt = (
+        f"This is the query from the user: {query}\n\n"
+        "Answer it briefly and in a way any layman can understand if complex topics arise.\n"
+        "Otherwise, keep the tone jovial, like a conversation between two friends."
     )
 
-    return resp.text
+    if emotion:
+        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
 
-def gemini_pro_resp(query : str):
+    model = genai.GenerativeModel("gemini-2.5-flash-preview-05-20")
+    response = model.generate_content(prompt)
+
+    return response.text
+
+def gemini_pro_resp(query : str, emotion : str):
     prompt = f"""
         This is the query from the user: {query}
 
@@ -81,6 +95,9 @@ def gemini_pro_resp(query : str):
 
         So explain them in a way that is easy to understand and maintain the tempo jovially.
     """
+
+    if emotion:
+        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
 
     resp = genai.GenerativeModel("gemini-2.5-pro-preview-05-06").generate_content(
         contents = prompt
@@ -100,8 +117,9 @@ def gemini_pro_resp(query : str):
 
 # and more importantly dont delete this
 
+#ollama models chosen - gemma3:27b, llama3.3:70b, deepseek-r1:70b, phi4:14b, need this for schema
 
-def ollama_gemma3_resp(query : str):
+def ollama_gemma3_resp(query : str, emotion : str):
     prompt = f"""
         This is the query from the user: {query}
 
@@ -109,6 +127,9 @@ def ollama_gemma3_resp(query : str):
 
         Otherwise maintain the tempo jovially, and make it sound like a conversation between two friends.
     """
+
+    if emotion:
+        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
 
     result = subprocess.run(
         ["ollama", "run", "gemma3:27b", prompt],
@@ -124,7 +145,7 @@ def ollama_gemma3_resp(query : str):
     else:
         return f"There was some issue genrating the content with ollama gemma3: {result.stderr}"
     
-def ollama_llama3_resp(query : str):
+def ollama_llama3_resp(query : str, emotion : str):
     prompt = f"""
         This is the query from the user: {query}
 
@@ -132,6 +153,9 @@ def ollama_llama3_resp(query : str):
 
         So explain them in a way that is easy to understand and maintain the tempo jovially.
     """
+
+    if emotion:
+        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
 
     result = subprocess.run(
         ["ollama", "run", "llama3.3:70b", prompt],
@@ -146,7 +170,7 @@ def ollama_llama3_resp(query : str):
     else:
         return f"There was some issue genrating the content with ollama llama3: {result.stderr}"
     
-def ollama_deepseek_resp(query : str):
+def ollama_deepseek_resp(query : str, emotion : str):
     prompt = f"""
         This is the query from the user: {query}
 
@@ -154,6 +178,9 @@ def ollama_deepseek_resp(query : str):
 
         Explain with strong logic, clean structure, and a friendly but formal tone.
     """
+
+    if emotion:
+        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
 
     result = subprocess.run(
         ["ollama", "run", "deepseek-r1:70b", prompt],
@@ -168,7 +195,7 @@ def ollama_deepseek_resp(query : str):
         return f"There was some issue genrating the content with ollama deepseek: {result.stderr}"
     
 
-def ollama_phi_resp(query : str):
+def ollama_phi_resp(query : str, emotion : str):
     prompt = f"""
         This is the query from the user: {query}
 
@@ -176,6 +203,9 @@ def ollama_phi_resp(query : str):
 
         Explain things simply, step by step, as if teaching someone new but curious.
     """
+
+    if emotion:
+        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
 
     result = subprocess.run(
         ["ollama", "run", "phi4:14b", prompt],
@@ -194,46 +224,47 @@ def Welcome():
     return Response("Welcome to Gidvion!")
 
 @app.get("/query/gemini_flash")
-def query_gemini(query : str):
+def query_gemini(query : str, emotion : str):
     return {
         "query": query,
-        "response": gemini_flash_resp(query),
+        "response": gemini_flash_resp(query, emotion),
     }
 
 @app.get("/query/gemini_pro")
-def query_gemini(query : str):
+def query_gemini(query : str, emotion : str):
     return {
         "query": query,
-        "response": gemini_pro_resp(query),
+        "response": gemini_pro_resp(query, emotion),
     }
 
 @app.get("/query/ollama_gemma3")
-def query_ollama(query : str):
+def query_ollama(query : str, emotion : str):
     return {
         "query": query,
-        "response": ollama_gemma3_resp(query),
+        "response": ollama_gemma3_resp(query, emotion),
     }
 
 @app.get("/query/ollama_llama3")
-def query_ollama(query : str):
+def query_ollama(query : str, emotion : str):
     return {
         "query": query,
-        "response": ollama_llama3_resp(query),
+        "response": ollama_llama3_resp(query, emotion),
     }
 
 @app.get("/query/ollama_deepseek")
-def query_ollama(query : str):
+def query_ollama(query : str, emotion : str):
     return {
         "query": query,
-        "response": ollama_deepseek_resp(query),
+        "response": ollama_deepseek_resp(query, emotion),
     }
 
 @app.get("/query/ollama_phi")
-def query_ollama(query : str):
+def query_ollama(query : str, emotion : str):
     return {
         "query": query,
-        "response": ollama_phi_resp(query),
+        "response": ollama_phi_resp(query, emotion),
     }
+
 
 
 

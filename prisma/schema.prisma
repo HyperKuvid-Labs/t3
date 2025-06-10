@@ -1,0 +1,76 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-py"
+  recursive_type_depth  = 5
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ModelType {
+  ollama
+  online
+}
+
+enum ModelNameOllama {
+  gemma3_27b
+  llama3_3_70b
+  deepseek_r1_70b
+  phi4_14b
+}
+
+enum ModelNameOnline {
+  gemini2_5_flash
+  gemini2_5_pro
+  deepseekv3
+  claude3_5
+}
+
+model User {
+  id    Int     @id @default(autoincrement())
+  email String  @unique
+  name  String?
+  passwordHash String?
+  QueryResps QueryResp[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  conversations Conversation[] @relation("UserConversations")
+}
+
+model Model {
+  modelId Int @id @default(autoincrement())
+  type ModelType @default(ollama)
+  name ModelNameOllama @default(gemma3_27b)
+  nameOnline ModelNameOnline @default(gemini2_5_flash)
+  QueryResps QueryResp[]
+  lastReadAt DateTime @default(now())
+}
+
+model Conversation {
+  id        Int      @id @default(autoincrement())
+  users     User[]   @relation("UserConversations")
+  roomName String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now())
+  queries QueryResp[] @relation("ConversationQueries")
+}
+
+model QueryResp {
+  id Int @id @default(autoincrement())
+  query String
+  result String
+  ModelUsed Model @relation(fields: [modelId], references: [modelId])
+  modelId Int
+  user User @relation(fields: [userId], references: [id])
+  userId Int
+  conversation Conversation @relation("ConversationQueries", fields: [conversationId], references: [id])
+  conversationId Int
+}
+
