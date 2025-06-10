@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 import os
 import json
 from pydantic import BaseModel
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.sessions import SessionMiddleware
 from authlib.integrations.starlette_client import OAuth
 from starlette.responses import RedirectResponse
@@ -24,6 +24,7 @@ from datetime import datetime, timedelta
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import Optional
 import bcrypt
+import logging
 
 oauth = OAuth()
 
@@ -48,6 +49,8 @@ oauth.register(
 app = FastAPI()
 
 prisma = Prisma()
+
+security = HTTPBearer(auto_error=False) #as we check for the oauth too, if given default after jwt verification it wont fallback to oauth, will raise the error directly
 
 app.add_middleware(
     CORSMiddleware,
@@ -314,69 +317,329 @@ async def get_current_user_jwt(token):
 
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get("sub")
+        email : str = payload.get("sub")
         if email is None:
             raise credentials_exception
-    except JWTError as e:
+        
+        exp : str = payload.get("exp")
+        if exp and datetime.utcnow().timestamp() > exp:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.InvalidTokenError as e:
+        logging.warning(f"Invalid JWT token: {str(e)}")
         raise credentials_exception from e
+    except Exception as e:
+        logging.error(f"Unexpected error during JWT validation: {str(e)}")
+        raise credentials_exception from e
+    
     user = await prisma.user.find_first(where={"email": email})
     if user is None:
-        raise credentials_exception
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 async def get_current_user_oauth(request : Request):
-    user = request.session.get("user")
-    if not user:
+    user_info = request.session.get("user")
+    if not user_info:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated via OAuth"
         )
-    return user
     
+    email = user_info.get("email")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid OAuth session - missing email"
+        )
+
+    user = await prisma.user.find_first(where={"email": email})
+    if not user:
+        # Auto-create OAuth users if they don't exist
+        try:
+            user = await prisma.user.create(
+                data={
+                    "email": email,
+                    "username": user_info.get("name", email.split("@")[0]),
+                    "authProvider": "google",
+                    "authId": user_info.get("sub"),
+                    "passwordHash": ""  # No password for OAuth users
+                }
+            )
+        except Exception as e:
+            logging.error(f"Failed to create OAuth user: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user account"
+            )
+    return user
+
+async def get_current_user_flexible(request : Request, credentials : HTTPAuthorizationCredentials = Depends(security)) -> User:
+    if credentials and credentials.credentials:
+        try:
+            return await get_current_user_jwt(credentials.credentials)
+        except HTTPException:
+            if not request.session.get("user"):
+                raise JWTError
+            
+    try:
+        return await get_current_user_oauth(request)
+    except HTTPException as oauth_error:
+        if credentials and credentials.credentials:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid JWT token and no valid OAuth session",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> User:
+    return await get_current_user_jwt(credentials.credentials)
+#should make these routes protected
 @app.get("/")
-def Welcome():
-    return Response("Welcome to Gidvion!")
+async def welcome(current_user: User = Depends(get_current_user_flexible)):
+    return {
+        "message": f"Welcome to Gidvion, {current_user.username}!",
+        "user_id": current_user.id,
+        "auth_provider": current_user.authProvider
+    }
+
+async def get_model_by_name(model_type: str, model_name: str) -> int:
+    if model_type == "online":
+        model = await prisma.modelthing.find_first(
+            where={
+                "type": "online",
+                "nameOnline": model_name
+            }
+        )
+    else:
+        model = await prisma.modelthing.find_first(
+            where={
+                "type": "ollama", 
+                "name": model_name
+            }
+        )
+    
+    if not model:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Will add the model soon...")
+    
+    return model.modelId
+
+async def get_default_conversation(user_id: int) -> int:
+    """Get or create default conversation for user"""
+    conversation = await prisma.conversation.find_first(
+        where={
+            "users": {
+                "some": {"id": user_id}
+            },
+            "roomName": "default"
+        }
+    )
+    
+    if not conversation:
+        conversation = await prisma.conversation.create(
+            data={
+                "roomName": "default",
+                "users": {
+                    "connect": {"id": user_id}
+                }
+            }
+        )
+    
+    return conversation.id
 
 @app.get("/query/gemini_flash")
-def query_gemini(query : str, emotion : str):
+async def query_gemini_flash(
+    query: str, 
+    emotion: str,
+    current_user: User = Depends(get_current_user)
+):
+    response = gemini_flash_resp(query, emotion)
+    
+    # Get model ID for Gemini Flash
+    model_id = await get_model_by_name("online", "gemini2_5_flash")
+    conversation_id = await get_default_conversation(current_user.id)
+    
+    # Log query to database
+    query_resp = await prisma.queryresp.create(
+        data={
+            "query": query,
+            "result": response,
+            "userId": current_user.id,
+            "modelId": model_id,
+            "conversationId": conversation_id
+        }
+    )
+    
     return {
         "query": query,
-        "response": gemini_flash_resp(query, emotion),
+        "response": response,
+        "model": "gemini_flash",
+        "user": current_user.username,
+        "query_id": query_resp.id
     }
 
 @app.get("/query/gemini_pro")
-def query_gemini(query : str, emotion : str):
+async def query_gemini_pro(
+    query: str, 
+    emotion: str,
+    current_user: User = Depends(get_current_user)
+):
+    response = gemini_pro_resp(query, emotion)
+    
+    model_id = await get_model_by_name("online", "gemini2_5_pro")
+    conversation_id = await get_default_conversation(current_user.id)
+    
+    query_resp = await prisma.queryresp.create(
+        data={
+            "query": query,
+            "result": response,
+            "userId": current_user.id,
+            "modelId": model_id,
+            "conversationId": conversation_id
+        }
+    )
+    
     return {
         "query": query,
-        "response": gemini_pro_resp(query, emotion),
+        "response": response,
+        "model": "gemini_pro",
+        "user": current_user.username,
+        "query_id": query_resp.id
     }
 
 @app.get("/query/ollama_gemma3")
-def query_ollama(query : str, emotion : str):
+async def query_ollama_gemma3(
+    query: str, 
+    emotion: str,
+    current_user: User = Depends(get_current_user)
+):
+    response = ollama_gemma3_resp(query, emotion)
+    
+    model_id = await get_model_by_name("ollama", "gemma3_27b")
+    conversation_id = await get_default_conversation(current_user.id)
+    
+    query_resp = await prisma.queryresp.create(
+        data={
+            "query": query,
+            "result": response,
+            "userId": current_user.id,
+            "modelId": model_id,
+            "conversationId": conversation_id
+        }
+    )
+    
     return {
         "query": query,
-        "response": ollama_gemma3_resp(query, emotion),
+        "response": response,
+        "model": "ollama_gemma3",
+        "user": current_user.username,
+        "query_id": query_resp.id
     }
 
 @app.get("/query/ollama_llama3")
-def query_ollama(query : str, emotion : str):
+async def query_ollama_llama3(
+    query: str, 
+    emotion: str,
+    current_user: User = Depends(get_current_user)
+):
+    response = ollama_llama3_resp(query, emotion)
+    
+    model_id = await get_model_by_name("ollama", "llama3_3_70b")
+    conversation_id = await get_default_conversation(current_user.id)
+    
+    query_resp = await prisma.queryresp.create(
+        data={
+            "query": query,
+            "result": response,
+            "userId": current_user.id,
+            "modelId": model_id,
+            "conversationId": conversation_id
+        }
+    )
+    
     return {
         "query": query,
-        "response": ollama_llama3_resp(query, emotion),
+        "response": response,
+        "model": "ollama_llama3",
+        "user": current_user.username,
+        "query_id": query_resp.id
     }
 
 @app.get("/query/ollama_deepseek")
-def query_ollama(query : str, emotion : str):
+async def query_ollama_deepseek(
+    query: str, 
+    emotion: str,
+    current_user: User = Depends(get_current_user)
+):
+    response = ollama_deepseek_resp(query, emotion)
+    
+    model_id = await get_model_by_name("ollama", "deepseek_r1_70b")
+    conversation_id = await get_default_conversation(current_user.id)
+    
+    query_resp = await prisma.queryresp.create(
+        data={
+            "query": query,
+            "result": response,
+            "userId": current_user.id,
+            "modelId": model_id,
+            "conversationId": conversation_id
+        }
+    )
+    
     return {
         "query": query,
-        "response": ollama_deepseek_resp(query, emotion),
+        "response": response,
+        "model": "ollama_deepseek",
+        "user": current_user.username,
+        "query_id": query_resp.id
     }
 
 @app.get("/query/ollama_phi")
-def query_ollama(query : str, emotion : str):
+async def query_ollama_phi(
+    query: str, 
+    emotion: str,
+    current_user: User = Depends(get_current_user)
+):
+    response = ollama_phi_resp(query, emotion)
+    
+    model_id = await get_model_by_name("ollama", "phi4_14b")
+    conversation_id = await get_default_conversation(current_user.id)
+    
+    query_resp = await prisma.queryresp.create(
+        data={
+            "query": query,
+            "result": response,
+            "userId": current_user.id,
+            "modelId": model_id,
+            "conversationId": conversation_id
+        }
+    )
+    
     return {
         "query": query,
-        "response": ollama_phi_resp(query, emotion),
+        "response": response,
+        "model": "ollama_phi",
+        "user": current_user.username,
+        "query_id": query_resp.id
     }
 
 @app.get("/login/google")
