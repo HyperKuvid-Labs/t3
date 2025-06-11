@@ -17,64 +17,99 @@ interface Model {
   category: 'main' | 'local';
 }
 
+// enum ModelNameOllama {
+//   gemma3_27b
+//   llama3_3_70b
+//   deepseek_r1_70b
+//   phi4_14b
+// }
+
+// enum ModelNameOnline {
+//   gemini2_5_flash
+//   gemini2_5_pro
+//   deepseekv3
+//   claude3_5
+// }
 const models: Model[] = [
   {
-    id: 'gemini-2.5-pro',
-    name: 'Gemini 2.5 Pro',
-    provider: 'Google',
+    id: "gemini-2.5-pro",
+    name: "Gemini 2.5 Pro",
+    provider: "Google",
     description: "Google's most advanced multimodal model",
-    badge: 'NEW',
-    speed: 'Medium',
-    contextLength: '2M tokens',
+    badge: "NEW",
+    speed: "Medium",
+    contextLength: "1M tokens",
     isNew: true,
-    category: 'main'
+    category: "main",
   },
   {
-    id: 'claude-3.5-sonnet',
-    name: 'Claude 3.5 Sonnet',
-    provider: 'Anthropic',
+    id: "gemini-2.5-flash",
+    name: "Gemini 2.5 Flash",
+    provider: "Google",
+    description: "Google's most advanced model for fast responses",
+    badge: "NEW",
+    speed: "Fast",
+    contextLength: "1M tokens",
+    isNew: true,
+    category: "main",
+  },
+  {
+    id: "claude-3.5-sonnet",
+    name: "Claude 3.5 Sonnet",
+    provider: "Anthropic",
     description: "Anthropic's flagship reasoning model",
-    badge: 'Popular',
-    speed: 'Fast',
-    contextLength: '200K tokens',
-    category: 'main'
+    badge: "Popular",
+    speed: "Fast",
+    contextLength: "200K tokens",
+    category: "main",
   },
   {
-    id: 'gpt-4.1',
-    name: 'GPT-4.1',
-    provider: 'OpenAI',
-    description: "OpenAI's most advanced model",
-    speed: 'Medium',
-    contextLength: '128K tokens',
-    category: 'main'
+    id: "deepseek-v3",
+    name: "DeepSeek V3",
+    provider: "DeepSeek",
+    description: "DeepSeek's most advanced model for long-term memory",
+    badge: "NEW",
+    speed: "Medium",
+    contextLength: "128K tokens",
+    category: "main",
   },
   {
-    id: 'phi-3',
-    name: 'Phi-3',
-    provider: 'Microsoft',
-    description: 'Lightweight and efficient local model',
-    speed: 'Fast',
-    contextLength: '32K tokens',
-    category: 'local'
+    id: "gemma3_27b",
+    name: "Gemma 3",
+    provider: "Google",
+    description: "Lightweight and efficient Multimodal model",
+    speed: "Fast",
+    contextLength: "128K tokens",
+    category: "local",
   },
   {
-    id: 'llama-3',
-    name: 'LLaMA 3',
-    provider: 'Meta',
-    description: "Meta's open-source powerhouse",
-    speed: 'Medium',
-    contextLength: '8K tokens',
-    category: 'local'
+    id: "llama-3.3",
+    name: "LlaMA 3.3",
+    provider: "Meta",
+    description:
+      "Meta's multilingual, instruction-tuned 70B model with top-tier performance.",
+    speed: "Medium",
+    contextLength: "128K tokens",
+    category: "local",
   },
   {
-    id: 'gemma',
-    name: 'Gemma',
-    provider: 'Google',
-    description: 'Compact and efficient model',
-    speed: 'Fast',
-    contextLength: '8K tokens',
-    category: 'local'
-  }
+    id: "deepseek-r1-70b",
+    name: "DeepSeek R1",
+    provider: "DeepSeek",
+    description: "DeepSeek's most advanced model for long-term memory",
+    speed: "Fast",
+    contextLength: "128K tokens",
+    category: "local",
+  },
+  {
+    id: "phi4-14b",
+    name: "Phi 4",
+    provider: "Microsoft",
+    description: "State-of-the-art open model from Microsoft.",
+    speed: "Fast",
+    contextLength: "16K tokens",
+    category: "local",
+  },
 ];
 
 interface ModelSelectorProps {

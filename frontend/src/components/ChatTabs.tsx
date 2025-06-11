@@ -13,7 +13,7 @@ interface Tab {
 
 const tabs: Tab[] = [
   { id: 'chat', label: 'Chat', icon: MessageSquare, shortcut: 'Ctrl+1' },
-  { id: 'build', label: 'Build', icon: Code, shortcut: 'Ctrl+2' },
+  { id: 'conversation tree', label: 'Conversation Tree', icon: Code, shortcut: 'Ctrl+2' },
   { id: 'history', label: 'History', icon: History, shortcut: 'Ctrl+3' },
 ];
 

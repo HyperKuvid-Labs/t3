@@ -119,7 +119,7 @@ async def shutdown():
 
 genai.configure(api_key="AIzaSyA3fmU_TKoGeMoK02_9M48juoe0fR4Dt6w")
 
-client = anthropic.Anthropic(CLAUDE_API_KEY)
+# client = anthropic.Anthropic(CLAUDE_API_KEY)
 
 class UserModel(BaseModel):
     username : str
@@ -463,7 +463,6 @@ async def get_model_by_name(model_type: str, model_name: str) -> int:
     return model.modelId
 
 async def get_default_conversation(user_id: int) -> int:
-    """Get or create default conversation for user"""
     conversation = await prisma.conversation.find_first(
         where={
             "users": {
@@ -661,6 +660,13 @@ async def query_ollama_phi(
         "query_id": query_resp.id
     }
 
+@app.get("/health")
+async def health_check():
+    return JSONResponse(
+        content={"status": "healthy"},
+        status_code=200
+    )
+
 @app.get("/login/google")
 async def signup(request : Request):
     redirect_uri = "http://localhost:8000/auth/google"
@@ -678,7 +684,7 @@ async def auth_google(request : Request):
         raise HTTPException(status_code=400, detail="Invalid token")
     
     request.session["user"] = user_info
-    return RedirectResponse(url="/")
+    return RedirectResponse(url="http://localhost:8080")
 
 @app.post("/login-jwt")
 async def login_jwt(formData : UserLoginModel):

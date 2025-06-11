@@ -2,12 +2,27 @@ import { useState, useEffect } from 'react';
 import { motion, useAnimation, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowRight, Sparkles, Zap, Shield, Globe, MessageSquare, Code, Users, Star, Play, ChevronRight } from 'lucide-react';
+import { ArrowRight, Sparkles, Zap, Shield, Globe, MessageSquare, Code, Users, Star, Play, ChevronRight, LogIn, UserPlus, CheckCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const LandingPage = () => {
   const [activeFeature, setActiveFeature] = useState(0);
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const controls = useAnimation();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Check authentication status
+    const checkAuth = () => {
+      const token = localStorage.getItem('authToken');
+      setIsAuthenticated(!!token);
+      setIsLoading(false);
+    };
+
+    checkAuth();
+  }, []);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -30,38 +45,73 @@ const LandingPage = () => {
     {
       icon: MessageSquare,
       title: 'Advanced AI Chat',
-      description: 'Multi-model conversations with context awareness',
-      color: 'from-neon-blue to-cyan-500'
+      description: 'Multi-model conversations with context awareness and emotion tokens',
+      color: 'from-blue-500 to-cyan-500'
     },
     {
       icon: Users,
       title: 'AI Room Collaboration',
-      description: 'Team spaces for shared AI interactions',
-      color: 'from-neon-purple to-pink-500'
+      description: 'Team spaces for shared AI interactions and collaborative projects',
+      color: 'from-purple-500 to-pink-500'
     },
     {
       icon: Code,
       title: 'Project Builder',
-      description: 'AI-powered development workflow automation',
-      color: 'from-neon-green to-emerald-500'
+      description: 'AI-powered development workflow automation and code generation',
+      color: 'from-green-500 to-emerald-500'
     },
     {
       icon: Zap,
       title: 'Real-time Processing',
-      description: 'Lightning-fast response times',
+      description: 'Lightning-fast response times with multiple AI model support',
       color: 'from-yellow-400 to-orange-500'
     }
   ];
 
   const stats = [
-    { value: '10M+', label: 'Conversations' },
+    { value: '6+', label: 'AI Models' },
     { value: '50K+', label: 'Active Users' },
     { value: '99.9%', label: 'Uptime' },
     { value: '24/7', label: 'Support' }
   ];
 
+  const authFeatures = [
+    'Google OAuth Integration',
+    'Secure JWT Authentication',
+    'Session Management',
+    'Privacy Protection'
+  ];
+
+  const handleGetStarted = () => {
+    if (isAuthenticated) {
+      navigate('/chat');
+    } else {
+      navigate('/signup');
+    }
+  };
+
+  const handleSignIn = () => {
+    navigate('/login');
+  };
+
+  const handleGoogleAuth = () => {
+    window.location.href = 'http://localhost:8000/login/google';
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950/20 to-slate-950 flex items-center justify-center">
+        <motion.div
+          className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen relative overflow-hidden">
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-950 via-purple-950/20 to-slate-950">
       {/* Enhanced Background Effects */}
       <div className="absolute inset-0">
         {/* Grid Pattern */}
@@ -113,43 +163,74 @@ const LandingPage = () => {
         ))}
       </div>
 
-      {/* Animated background pattern */}
-      <div className="absolute inset-0 bg-[linear-gradient(rgba(120,119,198,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(120,119,198,0.03)_1px,transparent_1px)] bg-[size:4rem_4rem] opacity-40" />
-      
-      {/* Dynamic gradient orbs */}
-      <motion.div
-        className="absolute w-96 h-96 bg-gradient-to-r from-neon-blue/20 to-neon-purple/20 rounded-full blur-3xl"
-        animate={{
-          x: [0, 100, 0],
-          y: [0, -50, 0],
-          scale: [1, 1.2, 1],
-        }}
-        transition={{
-          duration: 8,
-          repeat: Infinity,
-          ease: "easeInOut"
-        }}
-        style={{ top: '10%', left: '10%' }}
-      />
-      
-      <motion.div
-        className="absolute w-80 h-80 bg-gradient-to-r from-neon-green/20 to-cyan-400/20 rounded-full blur-3xl"
-        animate={{
-          x: [0, -80, 0],
-          y: [0, 80, 0],
-          scale: [1, 0.8, 1],
-        }}
-        transition={{
-          duration: 10,
-          repeat: Infinity,
-          ease: "easeInOut"
-        }}
-        style={{ bottom: '10%', right: '10%' }}
-      />
+      {/* Navigation Header */}
+      <motion.nav
+        className="relative z-20 flex items-center justify-between p-6 backdrop-blur-sm"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6 }}
+      >
+        <motion.div
+          className="flex items-center gap-3"
+          whileHover={{ scale: 1.05 }}
+        >
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
+            <Sparkles className="w-6 h-6 text-white" />
+          </div>
+          <span className="text-2xl font-bold bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
+            Gidvion
+          </span>
+        </motion.div>
+
+        <div className="flex items-center gap-4">
+          {isAuthenticated ? (
+            <motion.div
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <Button
+                onClick={() => navigate('/chat')}
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+              >
+                <MessageSquare className="w-4 h-4 mr-2" />
+                Go to Chat
+              </Button>
+            </motion.div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Button
+                  variant="ghost"
+                  onClick={handleSignIn}
+                  className="text-white hover:text-purple-300 hover:bg-purple-500/10"
+                >
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Sign In
+                </Button>
+              </motion.div>
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <Button
+                  onClick={handleGetStarted}
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                >
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Sign Up
+                </Button>
+              </motion.div>
+            </div>
+          )}
+        </div>
+      </motion.nav>
 
       {/* Cursor follower */}
       <motion.div
-        className="fixed w-6 h-6 bg-neon-blue/30 rounded-full blur-sm pointer-events-none z-50"
+        className="fixed w-6 h-6 bg-purple-500/30 rounded-full blur-sm pointer-events-none z-50"
         animate={{
           x: mousePosition.x - 12,
           y: mousePosition.y - 12,
@@ -171,25 +252,26 @@ const LandingPage = () => {
           transition={{ duration: 0.8 }}
         >
           <motion.div
-            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-neon-blue/10 to-neon-purple/10 border border-neon-blue/20 rounded-full mb-8"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-full mb-8"
             whileHover={{ scale: 1.05 }}
             transition={{ duration: 0.2 }}
           >
-            <Sparkles className="w-5 h-5 text-neon-blue" />
-            <span className="text-sm font-medium text-neon-blue">Next Generation AI Platform</span>
-            <Badge variant="outline" className="border-neon-purple/30 text-neon-purple">
+            <Sparkles className="w-5 h-5 text-purple-400" />
+            <span className="text-sm font-medium text-purple-300">Next Generation AI Platform</span>
+            <Badge variant="outline" className="border-purple-500/30 text-purple-400 bg-purple-500/10">
               Beta
             </Badge>
           </motion.div>
 
           <motion.h1
-            className="text-7xl font-bold mb-8 bg-gradient-to-r from-white via-neon-blue to-neon-purple bg-clip-text text-transparent leading-tight"
+            className="text-7xl font-bold mb-8 bg-gradient-to-r from-white via-purple-200 to-blue-200 bg-clip-text text-transparent leading-tight"
             initial={{ opacity: 0, scale: 0.5 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2, duration: 0.8 }}
           >
             Welcome to{' '}
             <motion.span
+              className="bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent"
               animate={{
                 backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'],
               }}
@@ -216,16 +298,18 @@ const LandingPage = () => {
             multiple AI models, collaborative workspaces, and intelligent project building capabilities.
           </motion.p>
 
+          {/* Enhanced CTA Section */}
           <motion.div
-            className="flex flex-col sm:flex-row gap-6 justify-center items-center"
+            className="flex flex-col sm:flex-row gap-6 justify-center items-center mb-12"
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 0.6 }}
           >
             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
               <Button
+                onClick={handleGetStarted}
                 size="lg"
-                className="bg-gradient-to-r from-neon-blue to-cyan-500 hover:from-cyan-500 hover:to-neon-blue text-white font-medium px-8 py-4 rounded-xl text-lg group relative overflow-hidden"
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-medium px-8 py-4 rounded-xl text-lg group relative overflow-hidden"
               >
                 <motion.div
                   className="absolute inset-0 bg-white/20"
@@ -234,23 +318,69 @@ const LandingPage = () => {
                   transition={{ duration: 0.6 }}
                 />
                 <span className="relative z-10 flex items-center gap-2">
-                  Start Building
+                  {isAuthenticated ? 'Go to Chat' : 'Start Building'}
                   <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
                 </span>
               </Button>
             </motion.div>
 
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button
-                variant="outline"
-                size="lg"
-                className="border-2 border-neon-purple/30 hover:border-neon-purple text-white hover:bg-neon-purple/10 font-medium px-8 py-4 rounded-xl text-lg group"
-              >
-                <Play className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform" />
-                Watch Demo
-              </Button>
-            </motion.div>
+            {!isAuthenticated && (
+              <>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button
+                    onClick={handleSignIn}
+                    variant="outline"
+                    size="lg"
+                    className="border-2 border-purple-500/30 hover:border-purple-500 text-white hover:bg-purple-500/10 font-medium px-8 py-4 rounded-xl text-lg group"
+                  >
+                    <LogIn className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform" />
+                    Sign In
+                  </Button>
+                </motion.div>
+
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button
+                    onClick={handleGoogleAuth}
+                    variant="outline"
+                    size="lg"
+                    className="border-2 border-slate-600 hover:border-slate-500 bg-white hover:bg-gray-50 text-gray-900 font-medium px-8 py-4 rounded-xl text-lg group"
+                  >
+                    <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    Continue with Google
+                  </Button>
+                </motion.div>
+              </>
+            )}
           </motion.div>
+
+          {/* Authentication Features */}
+          {!isAuthenticated && (
+            <motion.div
+              className="flex flex-wrap justify-center gap-4 mb-8"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.8, duration: 0.6 }}
+            >
+              {authFeatures.map((feature, index) => (
+                <motion.div
+                  key={feature}
+                  className="flex items-center gap-2 px-4 py-2 bg-slate-800/30 rounded-full border border-slate-700/50"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.9 + index * 0.1 }}
+                  whileHover={{ scale: 1.05, backgroundColor: 'rgba(147, 51, 234, 0.1)' }}
+                >
+                  <CheckCircle className="w-4 h-4 text-green-400" />
+                  <span className="text-sm text-slate-300">{feature}</span>
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
         </motion.div>
 
         {/* Stats Section */}
@@ -263,12 +393,12 @@ const LandingPage = () => {
           {stats.map((stat, index) => (
             <motion.div
               key={stat.label}
-              className="text-center p-6 rounded-2xl bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 hover:border-neon-blue/30 transition-all duration-300"
+              className="text-center p-6 rounded-2xl bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 hover:border-purple-500/30 transition-all duration-300"
               whileHover={{ scale: 1.05, y: -5 }}
               transition={{ delay: index * 0.1 }}
             >
               <motion.div
-                className="text-3xl font-bold text-neon-blue mb-2"
+                className="text-3xl font-bold text-purple-400 mb-2"
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ delay: 1 + index * 0.1, type: "spring" }}
@@ -316,7 +446,7 @@ const LandingPage = () => {
                   key={feature.title}
                   className={`relative p-8 rounded-2xl backdrop-blur-sm border transition-all duration-500 cursor-pointer group ${
                     isActive 
-                      ? 'bg-slate-800/50 border-neon-blue/50 shadow-2xl shadow-neon-blue/10' 
+                      ? 'bg-slate-800/50 border-purple-500/50 shadow-2xl shadow-purple-500/10' 
                       : 'bg-slate-800/20 border-slate-700/30 hover:border-slate-600/50'
                   }`}
                   onMouseEnter={() => setActiveFeature(index)}
@@ -327,7 +457,7 @@ const LandingPage = () => {
                 >
                   {isActive && (
                     <motion.div
-                      className="absolute inset-0 bg-gradient-to-br from-neon-blue/10 to-neon-purple/5 rounded-2xl"
+                      className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-blue-500/5 rounded-2xl"
                       layoutId="activeFeature"
                       transition={{ duration: 0.3 }}
                     />
@@ -349,7 +479,7 @@ const LandingPage = () => {
                   </p>
                   
                   <motion.div
-                    className="mt-6 flex items-center text-neon-blue font-medium group-hover:text-cyan-400 transition-colors relative z-10"
+                    className="mt-6 flex items-center text-purple-400 font-medium group-hover:text-cyan-400 transition-colors relative z-10"
                     whileHover={{ x: 5 }}
                   >
                     Learn more
@@ -369,12 +499,12 @@ const LandingPage = () => {
           transition={{ delay: 2, duration: 0.8 }}
         >
           <motion.div
-            className="absolute inset-0 bg-gradient-to-r from-neon-blue/5 to-neon-purple/5 rounded-3xl border border-neon-blue/10"
+            className="absolute inset-0 bg-gradient-to-r from-purple-500/5 to-blue-500/5 rounded-3xl border border-purple-500/10"
             animate={{
               boxShadow: [
-                '0 0 0 0 rgba(0, 191, 255, 0.1)',
-                '0 0 30px 10px rgba(0, 191, 255, 0.1)',
-                '0 0 0 0 rgba(0, 191, 255, 0.1)'
+                '0 0 0 0 rgba(147, 51, 234, 0.1)',
+                '0 0 30px 10px rgba(147, 51, 234, 0.1)',
+                '0 0 0 0 rgba(147, 51, 234, 0.1)'
               ]
             }}
             transition={{ duration: 3, repeat: Infinity }}
@@ -382,12 +512,12 @@ const LandingPage = () => {
           
           <div className="relative z-10">
             <motion.h2
-              className="text-4xl font-bold mb-6 bg-gradient-to-r from-white via-neon-blue to-neon-purple bg-clip-text text-transparent"
+              className="text-4xl font-bold mb-6 bg-gradient-to-r from-white via-purple-200 to-blue-200 bg-clip-text text-transparent"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 2.2 }}
             >
-              Ready to Transform Your Workflow?
+              {isAuthenticated ? 'Ready to Continue Your Journey?' : 'Ready to Transform Your Workflow?'}
             </motion.h2>
             <motion.p
               className="text-xl text-slate-300 mb-8 max-w-2xl mx-auto"
@@ -395,7 +525,10 @@ const LandingPage = () => {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 2.4 }}
             >
-              Join thousands of developers and creators who are already building the future with Gidvion.
+              {isAuthenticated 
+                ? 'Continue exploring the power of AI with advanced chat features and collaborative tools.'
+                : 'Join thousands of developers and creators who are already building the future with Gidvion.'
+              }
             </motion.p>
             
             <motion.div
@@ -406,8 +539,9 @@ const LandingPage = () => {
               whileTap={{ scale: 0.95 }}
             >
               <Button
+                onClick={handleGetStarted}
                 size="lg"
-                className="bg-gradient-to-r from-neon-blue to-cyan-500 hover:from-cyan-500 hover:to-neon-blue text-white font-medium px-12 py-4 rounded-xl text-lg group relative overflow-hidden"
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-medium px-12 py-4 rounded-xl text-lg group relative overflow-hidden"
               >
                 <motion.div
                   className="absolute inset-0 bg-white/20"
@@ -416,7 +550,7 @@ const LandingPage = () => {
                   transition={{ duration: 0.6 }}
                 />
                 <span className="relative z-10 flex items-center gap-2">
-                  Get Started Now
+                  {isAuthenticated ? 'Go to Chat' : 'Get Started Now'}
                   <Star className="w-5 h-5 group-hover:rotate-180 transition-transform duration-500" />
                 </span>
               </Button>
