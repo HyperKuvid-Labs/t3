@@ -2,6 +2,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing_extensions import List, Literal
+from typing import Optional
 import json
 import requests
 from fastapi.middleware.cors import CORSMiddleware
@@ -405,115 +406,376 @@ async def get_models():
         )
 
 
-class QueryRequest(BaseModel):
-    query: str
-    emotion: str = ""
-    modelType: str = "ollama"  # "ollama" or "online"
-    modelName: str = "gemma3_27b"
+class MessageRequest(BaseModel):
+    content: str
     conversationId: int
     userId: int
-
-
-class QueryRequest(BaseModel):
-    query: str
-    emotion: str = ""
-    modelType: str
+    parentMessageId: Optional[int] = None
+    modelType: str = "ollama"
     modelName: str = "gemma3_27b"
-    conversationId: int
+    emotion: str = ""
+
+
+class EditMessageRequest(BaseModel):
+    messageId: int
+    newContent: str
     userId: int
+    editReason: Optional[str] = None
+    emotion: Optional[str] = ""
 
 
-@app.post("/query/")
-async def create_query(request: QueryRequest):
-    # try:
-    user = await prisma.user.find_first(where={"id": request.userId})
+class ConversationResponse(BaseModel):
+    conversationId: int
+    messages: List[dict]
+    branchInfo: dict
 
-    if not user:
-        return JSONResponse(content={"message": "user not found"}, status_code=500)
 
-    conversation = await prisma.conversation.find_first(
-        where={"id": request.conversationId}
-    )
+async def generate_ai_response(
+    content: str,
+    emotion: str,
+    model_type: str = None,
+    model_name: str = None,
+    model_id: int = None,
+):
+    model = None
 
-    # if not conversation:
-    #     return JSONResponse(
-    #         content={"message": "conversation not found"}, status_code=500
-    #     )
-    # print("bkkjdmk", conversation.users)
-    # user_in_conversaton = any(u.id == request.userId for u in conversation.users)
+    if model_id:
+        model = await prisma.model.find_first(where={"modelId": model_id})
 
-    # if not user_in_conversaton:
-    #     return JSONResponse(
-    #         content={"message": "user not in conversation"}, status_code=500
-    #     )
-    # print("kbdchjk", user_in_conversaton)
-    if request.modelType == "ollama":
+    if not model:
+        if model_type == "ollama":
+            model = await prisma.model.find_first(
+                where={"type": "ollama", "name": model_name, "isActive": True}
+            )
+        else:
+            model = await prisma.model.find_first(
+                where={
+                    "type": "online",
+                    "nameOnline": model_name,
+                    "isActive": True,
+                }
+            )
+
+    if not model:
         model = await prisma.model.find_first(
-            where={"type": "ollama", "name": request.modelName, "isActive": True}
+            where={"type": "ollama", "name": "gemma3_27b", "isActive": True}
         )
 
+    ai_response = ""
+    if model.type == "ollama":
+        if model.name == "gemma3_27b":
+            ai_response = ollama_gemma3_resp(content, emotion)
+        elif model.name == "llama3_3_70b":
+            ai_response = ollama_llama3_resp(content, emotion)
+        elif model.name == "deepseek_r1_70b":
+            ai_response = ollama_deepseek_resp(content, emotion)
+        elif model.name == "phi4_14b":
+            ai_response = ollama_phi_resp(content, emotion)
     else:
-        model = await prisma.model.find_first(
-            where={
-                "type": "online",
-                "nameOnline": request.modelName,
-                "isActive": True,
+        if model.nameOnline == "gemini2_5_flash":
+            ai_response = gemini_flash_resp(content, emotion)
+        elif model.nameOnline == "gemini2_5_pro":
+            ai_response = gemini_pro_resp(content, emotion)
+
+    return ai_response, model
+
+
+@app.post("/conversation/message/")
+async def create_or_branch_message(request: MessageRequest):
+    # create conversation from start or or branch
+    try:
+        # validate user and conversation
+        user = await prisma.user.find_first(where={"id": request.userId})
+        if not user:
+            return JSONResponse(content={"message": "user not found"}, status_code=404)
+
+        conversation = await prisma.conversation.find_first(
+            where={"id": request.conversationId}
+        )
+        if not conversation:
+            return JSONResponse(
+                content={"message": "conversation not found"}, status_code=404
+            )
+
+        user_message = await prisma.message.create(
+            data={
+                "content": request.content,
+                "role": "user",
+                "conversationId": request.conversationId,
+                "userId": request.userId,
+                "parentMessageId": request.parentMessageId,
             }
         )
-    if not model:
-        return JSONResponse(content={"message": "model not found"}, status_code=500)
-    print("bkkjdmk", model)
-    if request.modelType == "ollama":
 
-        if model.name == "gemma3_27b":
-            response = ollama_gemma3_resp(request.query, request.emotion)
-        elif model.name == "llama3.3_70b":
-            response = ollama_llama3_resp(request.query, request.emotion)
-        elif model.name == "deepseek-r1_70b":
-            response = ollama_deepseek_resp(request.query, request.emotion)
-        elif model.name == "phi4_14b":
-            response = ollama_phi_resp(request.query, request.emotion)
-        else:
-            return JSONResponse(
-                content={
-                    "message": f"model not supported, modelName:{request.modelName}"
+        ai_response, model = await generate_ai_response(
+            content=request.content,
+            emotion=request.emotion,
+            model_type=request.modelType,
+            model_name=request.modelName,
+        )
+
+        ai_message = await prisma.message.create(
+            data={
+                "content": ai_response,
+                "role": "assistant",
+                "conversationId": request.conversationId,
+                "userId": request.userId,
+                "parentMessageId": user_message.id,
+                "modelId": model.modelId,
+            }
+        )
+
+        return JSONResponse(
+            content={
+                "message": "messages created successfully",
+                "userMessage": {
+                    "id": user_message.id,
+                    "content": user_message.content,
+                    "role": user_message.role,
+                    "parentMessageId": user_message.parentMessageId,
                 },
-                status_code=500,
-            )
-    else:
-        if request.modelName == "gemini2_5_flash":
-            response = gemini_flash_resp(request.query, request.emotion)
-        elif request.modelName == "gemini2_5_pro":
-            response = gemini_pro_resp(request.query, request.emotion)
-        else:
-            return JSONResponse(
-                content={
-                    "message": f"model not supported, modelName:{request.modelName}"
+                "aiMessage": {
+                    "id": ai_message.id,
+                    "content": ai_message.content,
+                    "role": ai_message.role,
+                    "parentMessageId": ai_message.parentMessageId,
                 },
-                status_code=500,
+            },
+            status_code=201,
+        )
+
+    except Exception as e:
+        print(f"error creating message: {e}")
+        return JSONResponse(
+            content={"message": "error creating message"}, status_code=500
+        )
+
+
+@app.post("/conversation/message/edit/")
+async def edit_message_and_branch(request: EditMessageRequest):
+    # edit message
+    try:
+        user = await prisma.user.find_first(where={"id": request.userId})
+        if not user:
+            return JSONResponse(content={"message": "user not found"}, status_code=404)
+
+        original_message = await prisma.message.find_first(
+            where={"id": request.messageId}
+        )
+        if not original_message:
+            return JSONResponse(
+                content={"message": "message not found"}, status_code=404
             )
 
-    query_resp = await prisma.queryresp.create(
-        data={
-            "query": request.query,
-            "result": response,
-            "modelId": model.modelId,
-            "userId": request.userId,
-            "conversationId": request.conversationId,
+        # storring original content
+        await prisma.message.update(
+            where={"id": request.messageId},
+            data={
+                "isEdited": True,
+                "originalContent": (
+                    original_message.content
+                    if not original_message.isEdited
+                    else original_message.originalContent
+                ),
+            },
+        )
+
+        # creating new edited message
+        edited_message = await prisma.message.create(
+            data={
+                "content": request.newContent,
+                "role": original_message.role,
+                "conversationId": original_message.conversationId,
+                "userId": request.userId,
+                "parentMessageId": original_message.parentMessageId,
+                "editReason": request.editReason or "user edit",
+            }
+        )
+
+        ai_message = None
+        original_ai_message = await prisma.message.find_first(
+            where={"parentMessageId": request.messageId, "role": "assistant"}
+        )
+
+        original_model_id = original_ai_message.modelId if original_ai_message else None
+        ai_response, model = await generate_ai_response(
+            content=request.newContent,
+            emotion=request.emotion,
+            model_id=original_model_id,
+        )
+
+        ai_message = await prisma.message.create(
+            data={
+                "content": ai_response,
+                "role": "assistant",
+                "conversationId": original_message.conversationId,
+                "userId": request.userId,
+                "parentMessageId": edited_message.id,
+                "modelId": model.modelId,
+            }
+        )
+
+        response_content = {
+            "message": "message edited successfully",
+            "originalMessage": {
+                "id": original_message.id,
+                "content": original_message.content,
+                "isEdited": True,
+            },
+            "editedMessage": {
+                "id": edited_message.id,
+                "content": edited_message.content,
+            },
         }
-    )
 
-    return JSONResponse(
-        content={
-            "queryId": query_resp.id,
-            "query": request.query,
-            "response": response,
-            "model": request.modelName,
-        },
-        status_code=201,
-    )
-    # except Exception as e:
-    #     print(f"error creating query: {e}")
-    #     return JSONResponse(
-    #         content={"message": "error processing query"}, status_code=500
-    #     )
+        if ai_message:
+            response_content["aiMessage"] = {
+                "id": ai_message.id,
+                "content": ai_message.content,
+                "role": ai_message.role,
+                "parentMessageId": ai_message.parentMessageId,
+            }
+
+        return JSONResponse(
+            content=response_content,
+            status_code=201,
+        )
+
+    except Exception as e:
+        print(f"error editing message: {e}")
+        return JSONResponse(
+            content={"message": "error editing message"}, status_code=500
+        )
+
+
+@app.get("/conversation/{conversation_id}/tree")
+async def get_conversation_tree(conversation_id: int, user_id: int):
+    # get complete conversation tree with all branches
+    try:
+        conversation = await prisma.conversation.find_first(
+            where={"id": conversation_id}
+        )
+        if not conversation:
+            return JSONResponse(
+                content={"message": "conversation not found"}, status_code=404
+            )
+
+        messages = await prisma.message.find_many(
+            where={"conversationId": conversation_id},
+            include={
+                "user": {"select": {"id": True, "name": True}},
+                "model": {
+                    "select": {"modelId": True, "name": True, "nameOnline": True}
+                },
+            },
+            order={"createdAt": "asc"},
+        )
+
+        # building a tree which works need to be tested more
+        def build_tree(parent_id=None):
+            tree = []
+            for message in messages:
+                if message.parentMessageId == parent_id:
+                    message_data = {
+                        "id": message.id,
+                        "content": message.content,
+                        "role": message.role,
+                        "isEdited": message.isEdited,
+                        "originalContent": message.originalContent,
+                        "editReason": message.editReason,
+                        "createdAt": message.createdAt.isoformat(),
+                        "user": {"id": message.user.id, "name": message.user.name},
+                        "model": (
+                            {
+                                "id": message.model.modelId if message.model else None,
+                                "name": message.model.name if message.model else None,
+                            }
+                            if message.model
+                            else None
+                        ),
+                        "children": build_tree(message.id),
+                    }
+                    tree.append(message_data)
+            return tree
+
+        message_tree = build_tree()
+
+        return JSONResponse(
+            content={
+                "conversationId": conversation_id,
+                "roomName": conversation.roomName,
+                "messageTree": message_tree,
+            },
+            status_code=200,
+        )
+
+    except Exception as e:
+        print(f"error fetching conversation tree: {e}")
+        return JSONResponse(
+            content={"message": "error fetching conversation"}, status_code=500
+        )
+
+
+@app.get("/conversation/message/{message_id}/branches")
+async def get_message_branches(message_id: int):
+    # get all branch variations of a message
+    try:
+        message = await prisma.message.find_first(
+            where={"id": message_id},
+            include={
+                "user": {"select": {"id": True, "name": True}},
+                "model": {"select": {"modelId": True, "name": True}},
+            },
+        )
+
+        if not message:
+            return JSONResponse(
+                content={"message": "message not found"}, status_code=404
+            )
+
+        siblings = await prisma.message.find_many(
+            where={"parentMessageId": message.parentMessageId},
+            include={
+                "user": {"select": {"id": True, "name": True}},
+                "model": {"select": {"modelId": True, "name": True}},
+            },
+            order={"createdAt": "asc"},
+        )
+
+        branches = []
+        for sibling in siblings:
+            branch_data = {
+                "id": sibling.id,
+                "content": sibling.content,
+                "role": sibling.role,
+                "isEdited": sibling.isEdited,
+                "originalContent": sibling.originalContent,
+                "editReason": sibling.editReason,
+                "isOriginal": sibling.id == message_id,
+                "createdAt": sibling.createdAt.isoformat(),
+                "user": {"id": sibling.user.id, "name": sibling.user.name},
+                "model": (
+                    {
+                        "id": sibling.model.modelId if sibling.model else None,
+                        "name": sibling.model.name if sibling.model else None,
+                    }
+                    if sibling.model
+                    else None
+                ),
+            }
+            branches.append(branch_data)
+
+        return JSONResponse(
+            content={
+                "messageId": message_id,
+                "totalBranches": len(branches),
+                "branches": branches,
+            },
+            status_code=200,
+        )
+
+    except Exception as e:
+        print(f"error fetching message branches: {e}")
+        return JSONResponse(
+            content={"message": "error fetching branches"}, status_code=500
+        )
