@@ -11,7 +11,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = "postgresql://chats_owner:npg_VsuSd9Nzw8CI@ep-cool-bar-a1hxk2iv-pooler.ap-southeast-1.aws.neon.tech/chats?sslmode=require"
+  url      = env("DATABASE_URL")
 }
 
 enum ModelType {
@@ -36,43 +36,79 @@ enum ModelNameOnline {
 model User {
   id    Int     @id @default(autoincrement())
   email String  @unique
-  username String?
-  passwordHash String
+  name  String?
+  passwordHash String?
   QueryResps QueryResp[]
+  messages Message[] @relation("MessageAuthor")
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
   conversations Conversation[] @relation("UserConversations")
-  authProvider String? @default("jwt")
-  authId String?
+
+  @@index([email])
 }
 
-model ModelThing {
+model Model {
   modelId Int @id @default(autoincrement())
   type ModelType @default(ollama)
   name ModelNameOllama @default(gemma3_27b)
   nameOnline ModelNameOnline @default(gemini2_5_flash)
   QueryResps QueryResp[]
+  messages Message[]
   lastReadAt DateTime @default(now())
+  isActive Boolean @default(true)
+
+  @@index([isActive])
 }
+
+
 
 model Conversation {
   id        Int      @id @default(autoincrement())
   users     User[]   @relation("UserConversations")
-  roomName String
+  roomName String 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
   queries QueryResp[] @relation("ConversationQueries")
+  messages Message[]
+
+  @@index([roomName])
+}
+
+//new message model created(its QueryResp model with adddional fields), also keeping the original QueryResp model for reference
+model Message {
+  id Int @id @default(autoincrement())
+  content String
+  role String
+  conversationId Int
+  userId Int
+  parentMessageId Int?
+  isEdited Boolean @default(false)
+  originalContent String?
+  editReason String?
+  modelId Int?
+  createdAt DateTime @default(now())
+  
+  // relations
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user User @relation("MessageAuthor", fields: [userId], references: [id])
+  model Model? @relation(fields: [modelId], references: [modelId])
+  parentMessage Message? @relation("MessageBranch", fields: [parentMessageId], references: [id])
+  childMessages Message[] @relation("MessageBranch")
+
+  @@index([conversationId])
+  @@index([parentMessageId])
 }
 
 model QueryResp {
   id Int @id @default(autoincrement())
   query String
   result String
-  ModelUsed ModelThing @relation(fields: [modelId], references: [modelId])
+  ModelUsed Model @relation(fields: [modelId], references: [modelId])
   modelId Int
   user User @relation(fields: [userId], references: [id])
   userId Int
   conversation Conversation @relation("ConversationQueries", fields: [conversationId], references: [id])
   conversationId Int
+  createdAt DateTime @default(now())
 }
 
