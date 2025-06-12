@@ -3,10 +3,13 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { MessageSquare, Home, Code, Users, Menu, X } from 'lucide-react';
+import { User } from './types/user';
 
-interface NavigationProps {
+export interface NavigationProps {
   currentView: string;
   onViewChange: (view: string) => void;
+  onLogout: () => void;
+  user?: User | null;
 }
 
 const Navigation = ({ currentView, onViewChange }: NavigationProps) => {

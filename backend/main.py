@@ -8,7 +8,7 @@ import string
 from tqdm import tqdm
 import subprocess
 from prisma import Prisma
-from prisma.models import User, ModelThing, Conversation, QueryResp
+from prisma.models import User, Model, Conversation, QueryResp
 import asyncio
 from passlib.context import CryptContext
 from dotenv import load_dotenv
@@ -65,10 +65,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+async def load_models_in_db():
+    try:
+        existing_models = await prisma.model.count()
+        if existing_models > 0:
+            print(f"Models already exist in database: {existing_models} records")
+            return
+        
+        online_models = [
+            {"type": "online", "nameOnline": "gemini2_5_flash"},
+            {"type": "online", "nameOnline": "gemini2_5_pro"},
+            {"type": "online", "nameOnline": "deepseekv3"},
+            {"type": "online", "nameOnline": "claude3_5"},
+        ]
+
+        ollama_models = [
+            {"type": "ollama", "name": "gemma3_27b"},
+            {"type": "ollama", "name": "llama3_3_70b"},
+            {"type": "ollama", "name": "deepseek_r1_70b"},
+            {"type": "ollama", "name": "phi4_14b"},
+        ]
+        
+        for model_data in online_models + ollama_models:
+            await prisma.model.create(data=model_data)
+            
+        print(f"Successfully seeded {len(online_models + ollama_models)} models")
+        
+    except Exception as e:
+        print(f"Error seeding models: {e}")
+        raise
+
 
 @app.on_event("startup")
 async def startup():
     await prisma.connect()
+    await load_models_in_db()
     print("Successfully connected to Prisma database.")
 
 
@@ -117,14 +148,14 @@ async def shutdown():
 #claude models
 
 
-genai.configure(api_key="AIzaSyA3fmU_TKoGeMoK02_9M48juoe0fR4Dt6w")
+genai.configure(api_key="AIzaSyAxlaAthy3YF2Ul15VdgCwPhSoOyGK2hWk")
 
 # client = anthropic.Anthropic(CLAUDE_API_KEY)
 
 class UserModel(BaseModel):
     username : str
-    password : str
     email : str
+    password : str
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGO")
@@ -146,13 +177,21 @@ app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
 
 def gemini_flash_resp(query: str, emotion: str = "") -> str:
     prompt = (
-        f"This is the query from the user: {query}\n\n"
-        "Answer it briefly and in a way any layman can understand if complex topics arise.\n"
-        "Otherwise, keep the tone jovial, like a conversation between two friends."
+        f"You are an AI assistant responding to the following user query:\n\n"
+        f"User's Query: \"{query}\"\n\n"
+        "Please keep your answers brief, clear, and simple enough for a layman to understand. "
+        "If the topic is technical, use analogies or simple language. "
+        "Maintain a friendly, informal tone — like a helpful friend in a casual conversation."
     )
 
     if emotion:
-        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
+        prompt += (
+            f"\n\nThe user is feeling **{emotion}** right now. "
+            "Adapt your tone, word choice, and response style to align with this emotion. "
+            "For example, if the user feels sad, be more gentle and supportive. "
+            "If excited, match their enthusiasm. If confused, be calm and reassuring. "
+            "Use emotional intelligence in your response."
+        )
 
     model = genai.GenerativeModel("gemini-2.5-flash-preview-05-20")
     response = model.generate_content(prompt)
@@ -170,7 +209,13 @@ def gemini_pro_resp(query: str, emotion: str):
     """
 
     if emotion:
-        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
+        prompt += (
+            f"\n\nThe user is feeling **{emotion}** right now. "
+            "Adapt your tone, word choice, and response style to align with this emotion. "
+            "For example, if the user feels sad, be more gentle and supportive. "
+            "If excited, match their enthusiasm. If confused, be calm and reassuring. "
+            "Use emotional intelligence in your response."
+        )
 
     resp = genai.GenerativeModel("gemini-2.5-pro-preview-05-06").generate_content(
         contents=prompt
@@ -207,7 +252,13 @@ def ollama_gemma3_resp(query: str, emotion: str):
     """
 
     if emotion:
-        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
+        prompt += (
+            f"\n\nThe user is feeling **{emotion}** right now. "
+            "Adapt your tone, word choice, and response style to align with this emotion. "
+            "For example, if the user feels sad, be more gentle and supportive. "
+            "If excited, match their enthusiasm. If confused, be calm and reassuring. "
+            "Use emotional intelligence in your response."
+        )
 
     result = subprocess.run(
         ["ollama", "run", "gemma3:27b", prompt],
@@ -234,7 +285,13 @@ def ollama_llama3_resp(query: str, emotion: str):
     """
 
     if emotion:
-        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
+        prompt += (
+            f"\n\nThe user is feeling **{emotion}** right now. "
+            "Adapt your tone, word choice, and response style to align with this emotion. "
+            "For example, if the user feels sad, be more gentle and supportive. "
+            "If excited, match their enthusiasm. If confused, be calm and reassuring. "
+            "Use emotional intelligence in your response."
+        )
 
     result = subprocess.run(
         ["ollama", "run", "llama3.3:70b", prompt],
@@ -260,7 +317,13 @@ def ollama_deepseek_resp(query: str, emotion: str):
     """
 
     if emotion:
-        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
+        prompt += (
+            f"\n\nThe user is feeling **{emotion}** right now. "
+            "Adapt your tone, word choice, and response style to align with this emotion. "
+            "For example, if the user feels sad, be more gentle and supportive. "
+            "If excited, match their enthusiasm. If confused, be calm and reassuring. "
+            "Use emotional intelligence in your response."
+        )
 
     result = subprocess.run(
         ["ollama", "run", "deepseek-r1:70b", prompt],
@@ -285,7 +348,13 @@ def ollama_phi_resp(query: str, emotion: str):
     """
 
     if emotion:
-        prompt += f"\n\nEmotion: {emotion}. Respond accordingly."
+        prompt += (
+            f"\n\nThe user is feeling **{emotion}** right now. "
+            "Adapt your tone, word choice, and response style to align with this emotion. "
+            "For example, if the user feels sad, be more gentle and supportive. "
+            "If excited, match their enthusiasm. If confused, be calm and reassuring. "
+            "Use emotional intelligence in your response."
+        )
 
     result = subprocess.run(
         ["ollama", "run", "phi4:14b", prompt],
@@ -309,7 +378,7 @@ def hash_password(pwd : str):
 
 async def authenticate_user(username: str, password: str):
     user = await prisma.user.find_first(
-        where={"username": username}
+        where={"name": username}
     )
     if user and verify_pwd(password, user.passwordHash):  
         return user
@@ -433,6 +502,9 @@ async def get_current_user(
 ) -> User:
     return await get_current_user_jwt(credentials.credentials)
 
+class ConvoModel(BaseModel):
+    query : str
+    emotion : str = ""
 
 async def welcome(current_user: User = Depends(get_current_user_flexible)):
     return {
@@ -442,22 +514,26 @@ async def welcome(current_user: User = Depends(get_current_user_flexible)):
     }
 
 async def get_model_by_name(model_type: str, model_name: str) -> int:
-    if model_type == "online":
-        model = await prisma.modelthing.find_first(
-            where={
-                "type": "online",
-                "nameOnline": model_name
-            }
-        )
-    else:
-        model = await prisma.modelthing.find_first(
-            where={
-                "type": "ollama", 
-                "name": model_name
-            }
-        )
+    try:
+        if model_type == "online":
+            model = await prisma.model.find_first(
+                where={
+                    "nameOnline": model_name
+                }
+            )
+        else:
+            model = await prisma.model.find_first(
+                where={
+                    "name": model_name
+                }
+            )
+    except Exception as e:
+        print(e)
+
+    # print(model)
     
     if not model:
+        print(model_name)
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Will add the model soon...")
     
     return model.modelId
@@ -515,12 +591,13 @@ async def query_gemini_flash(
         "query_id": query_resp.id
     }
 
-@app.get("/query/gemini_pro")
+@app.post("/query/gemini_pro")
 async def query_gemini_pro(
-    query: str, 
-    emotion: str,
+    data : ConvoModel,
     current_user: User = Depends(get_current_user)
 ):
+    query = data.query
+    emotion = data.emotion
     response = gemini_pro_resp(query, emotion)
     
     model_id = await get_model_by_name("online", "gemini2_5_pro")
@@ -540,7 +617,7 @@ async def query_gemini_pro(
         "query": query,
         "response": response,
         "model": "gemini_pro",
-        "user": current_user.username,
+        "user": current_user.email,
         "query_id": query_resp.id
     }
 
@@ -573,7 +650,7 @@ async def query_ollama_gemma3(
         "query_id": query_resp.id
     }
 
-@app.get("/query/ollama_llama3")
+@app.post("/query/ollama_llama3")
 async def query_ollama_llama3(
     query: str, 
     emotion: str,
@@ -667,6 +744,10 @@ async def health_check():
         status_code=200
     )
 
+@app.get("/auth/me")
+async def get_current_user(current_user: User = Depends(get_current_user)):
+    return current_user
+
 @app.get("/login/google")
 async def signup(request : Request):
     redirect_uri = "http://localhost:8000/auth/google"
@@ -701,10 +782,13 @@ async def login_jwt(formData : UserLoginModel):
 
 @app.post("/register")
 async def register(user_data: UserModel):
+    username = user_data.username
+    print(username)
+    email = user_data.email
+    password = user_data.password
     try:
-        # Check if user already exists
         existing_user = await prisma.user.find_unique(
-            where={"email": user_data.email}
+            where={"email": email}
         )
         if existing_user:
             raise HTTPException(
@@ -712,11 +796,27 @@ async def register(user_data: UserModel):
                 detail="User with this email already exists"
             )
         
-        hashed = hash_password(user_data.password)
+        # model User {
+            # id    Int     @id @default(autoincrement())
+            # email String  @unique
+            # name  String?
+            # passwordHash String?
+            # authProvider AuthProvider 
+            # QueryResps QueryResp[]
+            # messages Message[] @relation("MessageAuthor")
+            # createdAt DateTime @default(now())
+            # updatedAt DateTime @default(now())
+            # conversations Conversation[] @relation("UserConversations")
+
+            # @@index([email])
+            # }
+
+        
+        hashed = hash_password(password)
         user = await prisma.user.create(
             data={
-                "username": user_data.username,
-                "email": user_data.email,
+                "name": username,
+                "email": email,
                 "passwordHash": hashed,
                 "authProvider": "jwt"
             }
@@ -724,12 +824,13 @@ async def register(user_data: UserModel):
         
         return {
             "id": user.id,
-            "username": user.username,
+            "username": user.name,
             "email": user.email,
             "authProvider": user.authProvider
         }
         
     except Exception as e:
+        print(e)
         if "already exists" in str(e):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

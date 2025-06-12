@@ -80,14 +80,11 @@ export async function sendQueryToBackend(
   }
 
   try {
-    const response: AxiosResponse<ChatResponse> = await axios.get(
+    const response: AxiosResponse<ChatResponse> = await axios.post(
       modelEndpoints[model],
       {
-        params: { 
-          query: query.trim(), 
-          emotion: emotion || '' 
-        },
-        timeout: 30000, // 30 second timeout
+        query: query.trim(),
+        emotion: emotion || ''
       }
     );
 

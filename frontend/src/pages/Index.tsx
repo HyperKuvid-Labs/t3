@@ -221,7 +221,7 @@ const AuthenticatedApp = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
         >
-          <Footer user={user} />
+          <Footer/>
         </motion.div>
       )}
       
@@ -258,10 +258,15 @@ const Index = () => {
     const initializeApp = async () => {
       try {
         // Check if backend is available
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+
         const healthCheck = await fetch('http://localhost:8000/health', {
           method: 'GET',
-          timeout: 5000
+          signal: controller.signal
         }).catch(() => null);
+
+        clearTimeout(timeoutId);
 
         if (!healthCheck || !healthCheck.ok) {
           setHasError(true);

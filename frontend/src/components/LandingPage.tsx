@@ -143,6 +143,8 @@ const LandingPage = () => {
             className={`absolute w-32 h-32 rounded-full opacity-10 blur-xl`}
             style={{
               background: `radial-gradient(circle, ${['#00BFFF', '#C084FC', '#00FFA3'][i % 3]} 0%, transparent 70%)`,
+              left: `${20 + (i * 15)}%`,
+              top: `${10 + (i * 12)}%`,
             }}
             animate={{
               x: [0, Math.random() * 100 - 50],
@@ -154,10 +156,6 @@ const LandingPage = () => {
               repeat: Infinity,
               ease: "easeInOut",
               delay: i * 0.5,
-            }}
-            style={{
-              left: `${20 + (i * 15)}%`,
-              top: `${10 + (i * 12)}%`,
             }}
           />
         ))}

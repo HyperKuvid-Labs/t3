@@ -1,6 +1,13 @@
 fastapi
 uvicorn
-google-geneartiveai
+google-generativeai
 tqdm
 subprocess
 prisma
+passlib[bcrypt]Add commentMore actions
+python-jose
+bcrypt
+authlib
+anthropic
+networkx
+matplotlib
