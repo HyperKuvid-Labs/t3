@@ -38,19 +38,48 @@ enum AuthProvider {
   oauth
 }
 
+enum InvitationStatus {
+  pending
+  accepted
+  declined 
+  expired
+}
+
+enum MessageType {
+  user
+  ai
+  system //for example like the notification
+}
+
+enum ConversationType {
+  team
+  direct
+  ai_enabled
+}
+
 model User {
   id    Int     @id @default(autoincrement())
   email String  @unique
   name  String?
   passwordHash String?
+  currentCoversationId Int?
   authProvider AuthProvider 
+  isOnline Boolean @default(false)
+  lastSeen DateTime @default(now())
+
   QueryResps QueryResp[]
   messages Message[] @relation("MessageAuthor")
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
   conversations Conversation[] @relation("UserConversations")
+  currentConversation Conversation? @relation("CurrentConversation", fields: [currentCoversationId], references: [id])
+
+  sentInvitations ConversationInvitation[] @relation("InvitationsSent")
+  receivedInvitations ConversationInvitation[] @relation("InvitationsReceived")
 
   @@index([email])
+  @@index([currentCoversationId])
+  @@index([isOnline])
 }
 
 model Model {
@@ -64,27 +93,61 @@ model Model {
   isActive Boolean @default(true)
 
   @@index([isActive])
+  @@index([type])
 }
-
 
 
 model Conversation {
   id        Int      @id @default(autoincrement())
-  users     User[]   @relation("UserConversations")
+  type ConversationType @default(team)
+  aiEnabled Boolean @default(false)
+  aiModel String?
+  lastMessageAt DateTime @default(now())
+
+  users User[] @relation("UserConversations")
+  currentUsers User[] @relation("CurrentConversation")
   roomName String 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now())
   queries QueryResp[] @relation("ConversationQueries")
   messages Message[]
 
-  @@index([roomName])
+  invitations ConversationInvitation[]
+
+  @@index([type])
+  @@index([aiEnabled])
+  @@index([lastMessageAt])
+}
+
+model ConversationInvitation {
+  id Int @id @default(autoincrement())
+  inviterUserId Int
+  invitedUserId Int
+  conversationId Int
+  status InvitationStatus @default(pending)
+  message String?
+  expiresAt DateTime?
+  acceptedAt DateTime?
+
+  inviter        User @relation("InvitationsSent", fields: [inviterUserId], references: [id])
+  invited        User @relation("InvitationsReceived", fields: [invitedUserId], references: [id])
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([invitedUserId, status])
+  @@index([conversationId])
+  @@index([status])
+  @@unique([inviterUserId, invitedUserId, conversationId])  
 }
 
 //new message model created(its QueryResp model with adddional fields), also keeping the original QueryResp model for reference
 model Message {
   id Int @id @default(autoincrement())
   content String
-  role String
+  role String  //user, asssistant, system please explain these types
+  messageType MessageType @default(user)
   conversationId Int
   userId Int
   parentMessageId Int?
@@ -92,9 +155,12 @@ model Message {
   originalContent String?
   editReason String?
   modelId Int?
+  aiPrompt String?
+  isDeleted Boolean @default(false)
+  deletedAt DateTime
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   
-  // relations
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   user User @relation("MessageAuthor", fields: [userId], references: [id])
   model Model? @relation(fields: [modelId], references: [modelId])
@@ -102,19 +168,27 @@ model Message {
   childMessages Message[] @relation("MessageBranch")
 
   @@index([conversationId])
+  @@index([messageType])
   @@index([parentMessageId])
+  @@index([userId])
+  @@index([createdAt])
 }
 
 model QueryResp {
-  id Int @id @default(autoincrement())
-  query String
-  result String
-  ModelUsed Model @relation(fields: [modelId], references: [modelId])
-  modelId Int
-  user User @relation(fields: [userId], references: [id])
-  userId Int
-  conversation Conversation @relation("ConversationQueries", fields: [conversationId], references: [id])
+  id             Int @id @default(autoincrement())
+  query          String
+  result         String
+  modelId        Int
+  userId         Int
   conversationId Int
-  createdAt DateTime @default(now())
+  createdAt      DateTime @default(now()) 
+  
+  ModelUsed      Model @relation(fields: [modelId], references: [modelId])
+  user           User @relation(fields: [userId], references: [id])
+  conversation   Conversation @relation("ConversationQueries", fields: [conversationId], references: [id])
+
+  @@index([userId])
+  @@index([conversationId])
+  @@index([createdAt])
 }
 

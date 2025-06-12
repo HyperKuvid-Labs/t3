@@ -623,18 +623,17 @@ async def query_gemini_pro(
 
 @app.get("/query/ollama_gemma3")
 async def query_ollama_gemma3(
-    query: str, 
-    emotion: str,
+    data : ConvoModel,
     current_user: User = Depends(get_current_user)
 ):
-    response = ollama_gemma3_resp(query, emotion)
+    response = ollama_gemma3_resp(data.query, data.emotion)
     
     model_id = await get_model_by_name("ollama", "gemma3_27b")
     conversation_id = await get_default_conversation(current_user.id)
     
     query_resp = await prisma.queryresp.create(
         data={
-            "query": query,
+            "query": data.query,
             "result": response,
             "userId": current_user.id,
             "modelId": model_id,
@@ -643,7 +642,7 @@ async def query_ollama_gemma3(
     )
     
     return {
-        "query": query,
+        "query": data.query,
         "response": response,
         "model": "ollama_gemma3",
         "user": current_user.username,
@@ -652,18 +651,17 @@ async def query_ollama_gemma3(
 
 @app.post("/query/ollama_llama3")
 async def query_ollama_llama3(
-    query: str, 
-    emotion: str,
+    data : ConvoModel,
     current_user: User = Depends(get_current_user)
 ):
-    response = ollama_llama3_resp(query, emotion)
+    response = ollama_llama3_resp(data.query, data.emotion)
     
     model_id = await get_model_by_name("ollama", "llama3_3_70b")
     conversation_id = await get_default_conversation(current_user.id)
     
     query_resp = await prisma.queryresp.create(
         data={
-            "query": query,
+            "query": data.query,
             "result": response,
             "userId": current_user.id,
             "modelId": model_id,
@@ -672,27 +670,26 @@ async def query_ollama_llama3(
     )
     
     return {
-        "query": query,
+        "query": data.query,
         "response": response,
         "model": "ollama_llama3",
         "user": current_user.username,
         "query_id": query_resp.id
     }
 
-@app.get("/query/ollama_deepseek")
+@app.post("/query/ollama_deepseek")
 async def query_ollama_deepseek(
-    query: str, 
-    emotion: str,
+    data : ConvoModel,
     current_user: User = Depends(get_current_user)
 ):
-    response = ollama_deepseek_resp(query, emotion)
+    response = ollama_deepseek_resp(data.query, data.emotion)
     
     model_id = await get_model_by_name("ollama", "deepseek_r1_70b")
     conversation_id = await get_default_conversation(current_user.id)
     
     query_resp = await prisma.queryresp.create(
         data={
-            "query": query,
+            "query": data.query,
             "result": response,
             "userId": current_user.id,
             "modelId": model_id,
@@ -701,7 +698,7 @@ async def query_ollama_deepseek(
     )
     
     return {
-        "query": query,
+        "query": data.query,
         "response": response,
         "model": "ollama_deepseek",
         "user": current_user.username,
@@ -710,18 +707,17 @@ async def query_ollama_deepseek(
 
 @app.get("/query/ollama_phi")
 async def query_ollama_phi(
-    query: str, 
-    emotion: str,
+    data : ConvoModel,
     current_user: User = Depends(get_current_user)
 ):
-    response = ollama_phi_resp(query, emotion)
+    response = ollama_phi_resp(data.query, data.emotion)
     
     model_id = await get_model_by_name("ollama", "phi4_14b")
     conversation_id = await get_default_conversation(current_user.id)
     
     query_resp = await prisma.queryresp.create(
         data={
-            "query": query,
+            "query": data.query,
             "result": response,
             "userId": current_user.id,
             "modelId": model_id,
@@ -730,7 +726,7 @@ async def query_ollama_phi(
     )
     
     return {
-        "query": query,
+        "query": data.query,
         "response": response,
         "model": "ollama_phi",
         "user": current_user.username,
@@ -844,10 +840,11 @@ async def register(user_data: UserModel):
 @app.get("/logout")
 async def logout(request: Request):
     request.session.clear()
-    return RedirectResponse(url="/")
+    return RedirectResponse(url="http://localhost:8080")
+
+#room logic
 class ConversationRequest(BaseModel):
     userIds: List
-
 
 @app.post("/conversation/")
 async def create_conversation(request: ConversationRequest):  # basic implementation
@@ -1280,3 +1277,32 @@ async def get_message_branches(message_id: int):
         return JSONResponse(
             content={"message": "error fetching branches"}, status_code=500
         )
+
+class UserInvite(BaseModel):
+    email : str
+    
+@app.post("/conversation/invite")
+async def invite_to_conversation_via_mail(
+    data : UserInvite,
+    current_user : User = Depends(get_current_user),
+):
+    user =  await prisma.user.find_first(
+        where = {
+            "email" : data.email
+        }
+    )
+
+    if not user:
+        return JSONResponse(
+            content={"message": "user not found"}, status_code=404
+            )
+    
+    roomId = current_user.currentConversationId
+    if not roomId:
+        return JSONResponse(
+            content={"message": "conversation not found"}, status_code=404
+            )
+    
+    
+    
+
