@@ -895,63 +895,63 @@ async def get_models():
             content={"message": "error fetching models"}, status_code=500
         )
     
-class ConversationCreate(BaseModel):
-    title : Optional[str] = None
-    type : str = "team" #can be team, p2p(direct), ai_integrated
-    pemails : List[str] = []
+# class ConversationCreate(BaseModel):
+#     title : Optional[str] = None
+#     type : str = "team" #can be team, p2p(direct), ai_integrated
+#     pemails : List[str] = []
 
-class MessageCreate(BaseModel):
-    content : str
-    conversation_id : int
-    parent_message_id : Optional[int] = None
-    ai : bool = False
-    ai_model = Optional[str] = None
+# class MessageCreate(BaseModel):
+#     content : str
+#     conversation_id : int
+#     parent_message_id : Optional[int] = None
+#     ai : bool = False
+#     ai_model = Optional[str] = None
 
-class TeamMessageRequest(BaseModel):
-    content : str
-    parent_message_id : Optional[int] = None
-    ai : bool = False
-    ai_model = Optional[str] = None
+# class TeamMessageRequest(BaseModel):
+#     content : str
+#     parent_message_id : Optional[int] = None
+#     ai : bool = False
+#     ai_model = Optional[str] = None
     
-class EnableAIRequest(BaseModel):
-    ai_e : bool #basically the ai mode is enabled or not 
-    ai_model = Optional[str] = "gemini2_5_flash"
+# class EnableAIRequest(BaseModel):
+#     ai_e : bool #basically the ai mode is enabled or not 
+#     ai_model = Optional[str] = "gemini2_5_flash"
 
-class AIMessageRequest(BaseModel):
-    prompt: str    
-    model_type : str = "ollama"
-    model_name : str = "deepseek_r1_70b"
-    context_messages : Optional[str]
+# class AIMessageRequest(BaseModel):
+#     prompt: str    
+#     model_type : str = "ollama"
+#     model_name : str = "deepseek_r1_70b"
+#     context_messages : Optional[str]
 
-class InvitationCreate(BaseModel):
-    email : str
-    conversationId : Optional[int] = None
-    message : Optional[str] = "Join pandra ***"
-
-
-
-# class MessageRequest(BaseModel):
-#     content: str
-#     conversationId: int
-#     userId: int
-#     parentMessageId: Optional[int] = None
-#     modelType: str = "ollama"
-#     modelName: str = "gemma3_27b"
-#     emotion: str = ""
+# class InvitationCreate(BaseModel):
+#     email : str
+#     conversationId : Optional[int] = None
+#     message : Optional[str] = "Join pandra ***"
 
 
-# class EditMessageRequest(BaseModel):
-#     messageId: int
-#     newContent: str
-#     userId: int
-#     editReason: Optional[str] = None
-#     emotion: Optional[str] = ""
+
+# # class MessageRequest(BaseModel):
+# #     content: str
+# #     conversationId: int
+# #     userId: int
+# #     parentMessageId: Optional[int] = None
+# #     modelType: str = "ollama"
+# #     modelName: str = "gemma3_27b"
+# #     emotion: str = ""
 
 
-# class ConversationResponse(BaseModel):
-#     conversationId: int
-#     messages: List[dict]
-#     branchInfo: dict
+# # class EditMessageRequest(BaseModel):
+# #     messageId: int
+# #     newContent: str
+# #     userId: int
+# #     editReason: Optional[str] = None
+# #     emotion: Optional[str] = ""
+
+
+# # class ConversationResponse(BaseModel):
+# #     conversationId: int
+# #     messages: List[dict]
+# #     branchInfo: dict
 
 
 # async def generate_ai_response(
