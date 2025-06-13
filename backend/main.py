@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response, HTTPException, status, Depends
+from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, UploadFile, File
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
@@ -27,6 +27,8 @@ import bcrypt
 import logging
 import uuid
 import anthropic
+import io
+import PyPDF2
 
 oauth = OAuth()
 
@@ -894,8 +896,35 @@ async def get_conversation_user(current_user = Depends(get_current_user)):
             "userId" : current_user.id
         }
     )
-    
+
     return conversations
+
+@app.post("/process-file")
+async def process_file(file: UploadFile = File(...), file_type: str = "pdf"):
+    try:
+        if file_type == "pdf":
+            content = await file.read()
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+            
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+
+            print(text)
+            
+            return {
+                "content": text,
+                "metadata": {
+                    "page_count": len(pdf_reader.pages),
+                    "word_count": len(text.split()),
+                    "character_count": len(text)
+                }
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File processing failed: {str(e)}")
 
 #room logic
 class ConversationRequest(BaseModel):
