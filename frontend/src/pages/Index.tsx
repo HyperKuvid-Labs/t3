@@ -10,6 +10,7 @@ import Login from '@/components/Login';
 import Signup from '@/components/SignUp';
 import Footer from '@/components/Footer';
 import { toast } from '@/hooks/use-toast';
+import GoogleCallback from '@/components/GoogleCallback';
 import { Shield, Loader2, AlertCircle } from 'lucide-react';
 
 interface User {
@@ -360,6 +361,8 @@ const Index = () => {
             <AuthenticatedApp />
           </ProtectedRoute>
         } />
+
+        <Route path="/auth/google" element={<GoogleCallback />} />
         
         {/* Home Route - Public but shows different content based on auth */}
         <Route path="/" element={<AuthenticatedApp />} />

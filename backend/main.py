@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, Response, HTTPException, status, Depends
 import requests
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 import uvicorn
 import google.generativeai as genai
 import string
@@ -44,10 +44,12 @@ oauth.register(
     client_secret=GOOGLE_CLIENT_SECRET,
     access_token_url='https://oauth2.googleapis.com/token',
     authorize_url='https://accounts.google.com/o/oauth2/v2/auth',
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
     api_base_url='https://www.googleapis.com/',
     jwks_uri='https://www.googleapis.com/oauth2/v3/certs',
     client_kwargs={
-        'scope': 'openid email profile'
+        'scope': 'openid email profile',
+        'prompt' : 'select_account'
     }
 )
 
@@ -173,8 +175,12 @@ class UserLoginModel(BaseModel):
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login-jwt")
 
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
-
+app.add_middleware(SessionMiddleware, 
+                   secret_key=SECRET_KEY,
+                   session_cookie="session",
+                   max_age=None,
+                   same_site="lax",
+                   https_only=True)
 def gemini_flash_resp(query: str, emotion: str = "") -> str:
     prompt = (
         f"You are an AI assistant responding to the following user query:\n\n"
@@ -750,18 +756,45 @@ async def signup(request : Request):
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 @app.get("/auth/google")
-async def auth_google(request : Request):
+async def auth_google(request: Request):
     try:
         token = await oauth.google.authorize_access_token(request)
+        user_info = token.get("userinfo")
+        if not user_info:
+            raise HTTPException(status_code=400, detail="Invalid token")
+        
+        email = user_info.get("email")
+        user = await prisma.user.find_first(where={"email": email})
+
+        if not user:
+            user = await prisma.user.create(
+                data={
+                    "email": email,
+                    "name": user_info.get("name", email.split("@")[0]),
+                    "authProvider": "google",
+                    "passwordHash": ""
+                }
+            )
+
+        access_token = await create_access_token(
+            data={"sub": email},
+            expiryTime=timedelta(minutes=int(ACCESS_TOKEN_EXPIRE_MINUTES))
+        )
+
+        html_content = f"""
+            <script>
+                if (window.opener) {{
+                    window.opener.postMessage({{ token: '{access_token}' }}, 'http://localhost:8080');
+                    window.close();
+                }} else {{
+                    window.location.href = 'http://localhost:8080/auth/google?token={access_token}';
+                }}
+            </script>
+        """
+        return HTMLResponse(content=html_content)
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-    
-    user_info = token.get("userinfo")
-    if not user_info:
-        raise HTTPException(status_code=400, detail="Invalid token")
-    
-    request.session["user"] = user_info
-    return RedirectResponse(url="http://localhost:8080")
 
 @app.post("/login-jwt")
 async def login_jwt(formData : UserLoginModel):

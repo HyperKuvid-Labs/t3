@@ -66,8 +66,28 @@ const Login = () => {
   };
 
   const handleGoogleLogin = () => {
-    // Redirect to Google OAuth endpoint
-    window.location.href = 'http://localhost:8000/login/google';
+    const popup = window.open('http://localhost:8000/login/google', 'Google Login', 
+      'width=500,height=600,left=0,top=0');
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.token) {
+        localStorage.setItem('authToken', event.data.token);
+        localStorage.setItem('tokenType', 'bearer');
+        
+        toast({
+          title: "Login Successful",
+          description: "Welcome back!",
+        });
+        
+        navigate('/chat');
+        
+        // Clean up
+        window.removeEventListener('message', handleMessage);
+        if (popup) popup.close();
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
   };
 
   return (
