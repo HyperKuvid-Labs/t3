@@ -231,6 +231,13 @@ const ChatInterface = () => {
   const headerOpacity = useTransform(scrollYProgress, [0, 0.1], [1, 0.95]);
   const headerBlur = useTransform(scrollYProgress, [0, 0.1], [0, 8]);
 
+  const formatMessagesForContext = (messages: Message[], limit: number = 10) => {
+  return messages
+    .slice(-limit)
+    .map(msg => `${msg.sender}: ${msg.content}`)
+    .join('\n');
+};
+
   // Persist messages to localStorage
   useEffect(() => {
     const savedMessages = localStorage.getItem('chat-messages');
@@ -370,6 +377,9 @@ const ChatInterface = () => {
       return;
     }
 
+    const previousContext = formatMessagesForContext(messages);
+    const fullPrompt = `Previous conversation:\n${previousContext}\n\nUser: ${inputValue}`;
+
     const messageId = Date.now().toString();
     const userMessage: Message = {
       id: messageId,
@@ -398,7 +408,7 @@ const ChatInterface = () => {
     try {
       // Send to backend
       const response: ChatResponse = await sendQueryToBackend(
-        inputValue.trim(), 
+        fullPrompt, 
         selectedEmotion || '', 
         selectedModel
       );
@@ -421,7 +431,9 @@ const ChatInterface = () => {
       };
 
       setMessages(prev => [...prev, aiMessage]);
-      
+
+      localStorage.setItem('chat-messages', JSON.stringify([...messages, userMessage, aiMessage]));
+
       // Mark user message as read
       setMessages(prev => prev.map(msg => 
         msg.id === messageId ? { ...msg, status: 'read' } : msg

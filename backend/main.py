@@ -875,6 +875,28 @@ async def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="http://localhost:8080")
 
+@app.get("/conversations/{conversationId}/history")
+async def get_conversation_history(conversation_id : int, current_user = Depends(get_current_user)):
+    history = await prisma.queryresp.find_many(
+        where = {
+            "conversationId" : conversation_id,
+            "userId" : current_user.id
+        },
+        order = {"createdAt" : "asc"}
+    )
+
+    return history
+
+@app.get("/conversations")
+async def get_conversation_user(current_user = Depends(get_current_user)):
+    conversations = await prisma.conversation.find_many(
+        where = {
+            "userId" : current_user.id
+        }
+    )
+    
+    return conversations
+
 #room logic
 class ConversationRequest(BaseModel):
     userIds: List
