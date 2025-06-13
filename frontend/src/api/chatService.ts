@@ -71,7 +71,8 @@ export async function sendQueryToBackend(
   query: string, 
   emotion: string, 
   model: ModelType,
-  files? : File[]
+  files? : File[],
+  webSearch? : boolean
 ): Promise<ChatResponse> {
   // const formData = new FormData();
   // formData.append('query', query);
@@ -114,7 +115,8 @@ export async function sendQueryToBackend(
       modelEndpoints[model],
       {
         query: query.trim(),
-        emotion: emotion || ''
+        emotion: emotion || '',
+        webSearch : webSearch || false
       },
       {
         headers: {

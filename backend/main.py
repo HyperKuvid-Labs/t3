@@ -29,6 +29,7 @@ import uuid
 import anthropic
 import io
 import PyPDF2
+from googleapiclient.discovery import build
 
 oauth = OAuth()
 
@@ -39,6 +40,7 @@ GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+GOOGLE_SEARCH_ENGINE_ID=os.getenv('GOOGLE_SEARCH_ENGINE_ID')
 
 oauth.register(
     name='google',
@@ -151,6 +153,7 @@ async def shutdown():
 
 #claude models
 
+GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key="AIzaSyAxlaAthy3YF2Ul15VdgCwPhSoOyGK2hWk")
 
@@ -207,7 +210,7 @@ def gemini_flash_resp(query: str, emotion: str = "") -> str:
     return response.text
 
 
-def gemini_pro_resp(query: str, emotion: str):
+def gemini_pro_resp(query: str, emotion: str, search_context : str):
     prompt = f"""
         This is the query from the user: {query}
 
@@ -215,6 +218,13 @@ def gemini_pro_resp(query: str, emotion: str):
 
         So explain them in a way that is easy to understand and maintain the tempo jovially.
     """
+
+    if search_context:
+        print(f"Search context: {search_context}")
+        prompt += f"""
+        Also, this is the web search context for the query, consider this by giving the resp, if irrelevant, ignore:
+        {search_context}
+        """
 
     if emotion:
         prompt += (
@@ -510,9 +520,30 @@ async def get_current_user(
 ) -> User:
     return await get_current_user_jwt(credentials.credentials)
 
+async def google_web_search(query: str, api_key: str, cse_id: str, num_results: int = 5):
+    try:
+        service = await build("customsearch", "v1", developerKey=api_key)
+        result = await service.cse().list(
+            q=query,
+            cx=cse_id,
+            num=num_results
+        ).execute()
+        
+        search_results = []
+        for item in result.get('items', []):
+            search_results.append({
+                'title': item.get('title'),
+                'link': item.get('link'),
+                'snippet': item.get('snippet')
+            })
+        return search_results
+    except Exception as e:
+        return f"Search error: {str(e)}"
+
 class ConvoModel(BaseModel):
     query : str
     emotion : str = ""
+    webSearch : bool = False
 
 async def welcome(current_user: User = Depends(get_current_user_flexible)):
     return {
@@ -606,7 +637,22 @@ async def query_gemini_pro(
 ):
     query = data.query
     emotion = data.emotion
-    response = gemini_pro_resp(query, emotion)
+    webSearch = data.webSearch
+
+    search_context = ""
+
+    try:
+        if webSearch:
+            search_results = await google_web_search(query, GOOGLE_API_KEY, GOOGLE_SEARCH_ENGINE_ID)
+            if search_results and isinstance(search_results, list):
+                search_context = "\n\nWeb Search Results:\n"
+                for i, result in enumerate(search_results[:3], 1):
+                    search_context += f"{i}. {result['title']}\n{result['snippet']}\n{result['link']}\n\n"
+    except Exception as e:
+        print(e)
+
+
+    response = gemini_pro_resp(query, emotion, search_context)
     
     model_id = await get_model_by_name("online", "gemini2_5_pro")
     conversation_id = await get_default_conversation(current_user.id)

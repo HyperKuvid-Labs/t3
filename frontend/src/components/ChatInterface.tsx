@@ -43,6 +43,7 @@ import {
   Shield,
   Database,
   Terminal,
+  Search,
 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import ModelSelector from "./ModelSelector"
@@ -211,6 +212,7 @@ const ChatInterface = () => {
   const [currentUser, setCurrentUser] = useState<ChatUser | null>(null)
   const [retryCount, setRetryCount] = useState(0)
   const [inputAreaVisible, setInputAreaVisible] = useState(true)
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -420,6 +422,7 @@ const ChatInterface = () => {
         selectedEmotion || "",
         selectedModel,
         attachedFiles,
+        webSearchEnabled
       )
 
       // Update user message status
@@ -1191,15 +1194,15 @@ const ChatInterface = () => {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setIsRecording(!isRecording)}
+                    onClick={() => setWebSearchEnabled(!webSearchEnabled)}
                     disabled={!isBackendHealthy}
                     className={`h-12 px-4 transition-all duration-200 disabled:opacity-50 ${
-                      isRecording
-                        ? "border-red-500/50 bg-red-500/10 text-red-400"
+                      webSearchEnabled
+                        ? "border-blue-500/50 bg-blue-500/10 text-blue-400"
                         : "border-slate-700 hover:border-slate-600 text-slate-300 hover:text-white hover:bg-slate-800/50"
                     }`}
                   >
-                    <Mic className={`w-4 h-4 ${isRecording ? "animate-pulse" : ""}`} />
+                    <Search className="w-4 h-4" />
                   </Button>
                 </motion.div>
 
