@@ -1,6 +1,7 @@
 // api/chatService.ts
 import axios, { AxiosResponse } from 'axios';
 import { toast } from '@/hooks/use-toast';
+import { FileProcessor, ProcessedFile } from './fileProcessing';
 
 const API_BASE_URL = 'http://localhost:8000';
 
@@ -69,8 +70,38 @@ export type ModelType = keyof typeof modelEndpoints;
 export async function sendQueryToBackend(
   query: string, 
   emotion: string, 
-  model: ModelType
+  model: ModelType,
+  files? : File[],
+  webSearch? : boolean
 ): Promise<ChatResponse> {
+  // const formData = new FormData();
+  // formData.append('query', query);
+  // formData.append('emotion', emotion);
+  // formData.append("model", model);
+
+  let fileContent = '';
+  if(files && files.length > 0){
+    try {
+      const fileContents = await FileProcessor.processFiles(files);
+
+      fileContent = fileContents.map(
+        file => {
+          if (file.error) {
+            return `File ${file.filename}: Error - ${file.error}`;
+          }
+          return `File ${file.filename}:\n${file.content}`;
+        })
+        .join('\n\n');
+
+      query = `${query}\n\nContent from uploaded files:\n${fileContent}`;
+
+      console.log('Query with file content:', query);
+    } catch (error) {
+      console.error('File processing error:', error);
+      throw new Error('Failed to process uploaded files');
+    }
+  }
+
   if (!modelEndpoints[model]) {
     throw new Error(`Model ${model} not supported`);
   }
@@ -84,7 +115,13 @@ export async function sendQueryToBackend(
       modelEndpoints[model],
       {
         query: query.trim(),
-        emotion: emotion || ''
+        emotion: emotion || '',
+        webSearch : webSearch || false
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+        },
       }
     );
 

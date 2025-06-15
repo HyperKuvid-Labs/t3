@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Request, Response, HTTPException, status, Depends
+from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, UploadFile, File
 import requests
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 import uvicorn
 import google.generativeai as genai
 import string
@@ -32,26 +32,34 @@ import bcrypt
 import logging
 import uuid
 import anthropic
+import io
+import PyPDF2
+from googleapiclient.discovery import build
 
 oauth = OAuth()
 
 load_dotenv()
 
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
-GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
+DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+GOOGLE_SEARCH_ENGINE_ID=os.getenv('GOOGLE_SEARCH_ENGINE_ID')
 
 oauth.register(
     name="google",
     client_id=GOOGLE_CLIENT_ID,
     client_secret=GOOGLE_CLIENT_SECRET,
-    access_token_url="https://oauth2.googleapis.com/token",
-    authorize_url="https://accounts.google.com/o/oauth2/v2/auth",
-    api_base_url="https://www.googleapis.com/",
-    jwks_uri="https://www.googleapis.com/oauth2/v3/certs",
-    client_kwargs={"scope": "openid email profile"},
+    access_token_url='https://oauth2.googleapis.com/token',
+    authorize_url='https://accounts.google.com/o/oauth2/v2/auth',
+    server_metadata_url='https://accounts.google.com/.well-known/openid-configuration',
+    api_base_url='https://www.googleapis.com/',
+    jwks_uri='https://www.googleapis.com/oauth2/v3/certs',
+    client_kwargs={
+        'scope': 'openid email profile',
+        'prompt' : 'select_account'
+    }
 )
 
 app = FastAPI()
@@ -153,6 +161,7 @@ async def shutdown():
 
 # claude models
 
+GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 
 genai.configure(api_key="AIzaSyAxlaAthy3YF2Ul15VdgCwPhSoOyGK2hWk")
 
@@ -183,9 +192,12 @@ class UserLoginModel(BaseModel):
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login-jwt")
 
-app.add_middleware(SessionMiddleware, secret_key=SECRET_KEY)
-
-
+app.add_middleware(SessionMiddleware, 
+                   secret_key=SECRET_KEY,
+                   session_cookie="session",
+                   max_age=None,
+                   same_site="lax",
+                   https_only=True)
 def gemini_flash_resp(query: str, emotion: str = "") -> str:
     prompt = (
         f"You are an AI assistant responding to the following user query:\n\n"
@@ -210,7 +222,7 @@ def gemini_flash_resp(query: str, emotion: str = "") -> str:
     return response.text
 
 
-def gemini_pro_resp(query: str, emotion: str):
+def gemini_pro_resp(query: str, emotion: str, search_context : str):
     prompt = f"""
         This is the query from the user: {query}
 
@@ -218,6 +230,13 @@ def gemini_pro_resp(query: str, emotion: str):
 
         So explain them in a way that is easy to understand and maintain the tempo jovially.
     """
+
+    if search_context:
+        print(f"Search context: {search_context}")
+        prompt += f"""
+        Also, this is the web search context for the query, consider this by giving the resp, if irrelevant, ignore:
+        {search_context}
+        """
 
     if emotion:
         prompt += (
@@ -521,11 +540,30 @@ async def get_current_user(
 ) -> User:
     return await get_current_user_jwt(credentials.credentials)
 
+async def google_web_search(query: str, api_key: str, cse_id: str, num_results: int = 5):
+    try:
+        service = await build("customsearch", "v1", developerKey=api_key)
+        result = await service.cse().list(
+            q=query,
+            cx=cse_id,
+            num=num_results
+        ).execute()
+        
+        search_results = []
+        for item in result.get('items', []):
+            search_results.append({
+                'title': item.get('title'),
+                'link': item.get('link'),
+                'snippet': item.get('snippet')
+            })
+        return search_results
+    except Exception as e:
+        return f"Search error: {str(e)}"
 
 class ConvoModel(BaseModel):
-    query: str
-    emotion: str = ""
-
+    query : str
+    emotion : str = ""
+    webSearch : bool = False
 
 async def welcome(current_user: User = Depends(get_current_user_flexible)):
     return {
@@ -604,8 +642,23 @@ async def query_gemini_pro(
 ):
     query = data.query
     emotion = data.emotion
-    response = gemini_pro_resp(query, emotion)
+    webSearch = data.webSearch
 
+    search_context = ""
+
+    try:
+        if webSearch:
+            search_results = await google_web_search(query, GOOGLE_API_KEY, GOOGLE_SEARCH_ENGINE_ID)
+            if search_results and isinstance(search_results, list):
+                search_context = "\n\nWeb Search Results:\n"
+                for i, result in enumerate(search_results[:3], 1):
+                    search_context += f"{i}. {result['title']}\n{result['snippet']}\n{result['link']}\n\n"
+    except Exception as e:
+        print(e)
+
+
+    response = gemini_pro_resp(query, emotion, search_context)
+    
     model_id = await get_model_by_name("online", "gemini2_5_pro")
     conversation_id = await get_default_conversation(current_user.id)
 
@@ -760,15 +813,42 @@ async def signup(request: Request):
 async def auth_google(request: Request):
     try:
         token = await oauth.google.authorize_access_token(request)
+        user_info = token.get("userinfo")
+        if not user_info:
+            raise HTTPException(status_code=400, detail="Invalid token")
+        
+        email = user_info.get("email")
+        user = await prisma.user.find_first(where={"email": email})
+
+        if not user:
+            user = await prisma.user.create(
+                data={
+                    "email": email,
+                    "name": user_info.get("name", email.split("@")[0]),
+                    "authProvider": "google",
+                    "passwordHash": ""
+                }
+            )
+
+        access_token = await create_access_token(
+            data={"sub": email},
+            expiryTime=timedelta(minutes=int(ACCESS_TOKEN_EXPIRE_MINUTES))
+        )
+
+        html_content = f"""
+            <script>
+                if (window.opener) {{
+                    window.opener.postMessage({{ token: '{access_token}' }}, 'http://localhost:8080');
+                    window.close();
+                }} else {{
+                    window.location.href = 'http://localhost:8080/auth/google?token={access_token}';
+                }}
+            </script>
+        """
+        return HTMLResponse(content=html_content)
+
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
-
-    user_info = token.get("userinfo")
-    if not user_info:
-        raise HTTPException(status_code=400, detail="Invalid token")
-
-    request.session["user"] = user_info
-    return RedirectResponse(url="http://localhost:8080")
 
 
 @app.post("/login-jwt")
@@ -851,8 +931,56 @@ async def logout(request: Request):
     request.session.clear()
     return RedirectResponse(url="http://localhost:8080")
 
+@app.get("/conversations/{conversationId}/history")
+async def get_conversation_history(conversation_id : int, current_user = Depends(get_current_user)):
+    history = await prisma.queryresp.find_many(
+        where = {
+            "conversationId" : conversation_id,
+            "userId" : current_user.id
+        },
+        order = {"createdAt" : "asc"}
+    )
 
-# room logic
+    return history
+
+@app.get("/conversations")
+async def get_conversation_user(current_user = Depends(get_current_user)):
+    conversations = await prisma.conversation.find_many(
+        where = {
+            "userId" : current_user.id
+        }
+    )
+
+    return conversations
+
+@app.post("/process-file")
+async def process_file(file: UploadFile = File(...), file_type: str = "pdf"):
+    try:
+        if file_type == "pdf":
+            content = await file.read()
+            pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+            
+            text = ""
+            for page in pdf_reader.pages:
+                text += page.extract_text() + "\n"
+
+            print(text)
+            
+            return {
+                "content": text,
+                "metadata": {
+                    "page_count": len(pdf_reader.pages),
+                    "word_count": len(text.split()),
+                    "character_count": len(text)
+                }
+            }
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported file type")
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"File processing failed: {str(e)}")
+
+#room logic
 class ConversationRequest(BaseModel):
     userIds: List
 

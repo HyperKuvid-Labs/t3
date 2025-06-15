@@ -166,7 +166,7 @@ class DepenedencyAnalyzer:
             pl.title("Dependency Graph")
             pl.show()
         except ImportError:
-            print("punda matplotlib is not installed. Skipping graph visualization.")
+            print("Matplotlib is not installed. Skipping graph visualization.")
 
 def refine_prompt(prompt: string) ->  string:
     resp = genai.GenerativeModel("gemini-2.5-flash-preview-05-20").generate_content(

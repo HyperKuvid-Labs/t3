@@ -183,44 +183,54 @@ const AppBuilder = () => {
       });
       return;
     }
-
+  
     setIsGenerating(true);
-    
-    // Simulate app generation process
+  
     try {
-      // Here you would typically send the request to your backend
-      const appRequest: AppRequest = {
-        techStack: selectedStack,
+      const appRequest = {
+        stackId: selectedStack.id,
         prompt: prompt.trim(),
         email: email.trim(),
         features: selectedFeatures
       };
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
+  
+      const response = await fetch("http://localhost:5000/run-task", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(appRequest)
+      });
+  
+      const result = await response.json();
+  
+      if (!response.ok) {
+        throw new Error(result.detail || "Backend error");
+      }
+  
       toast({
         title: "App Generation Started! 🚀",
-        description: `Your ${selectedStack.name} app is being generated. You'll receive it at ${email} in approximately ${selectedStack.estimatedTime}.`,
+        description: result.output || `Your ${selectedStack.name} app is being generated.`,
       });
-
-      // Reset form
+  
+      // ✅ Reset form after success
       setSelectedStack(null);
       setPrompt('');
       setEmail('');
       setSelectedFeatures([]);
       setCurrentStep(1);
-
+  
     } catch (error) {
       toast({
         title: "Generation Failed",
-        description: "Something went wrong. Please try again.",
+        description: error.message || "Something went wrong. Please try again.",
         variant: "destructive"
       });
     } finally {
       setIsGenerating(false);
     }
   };
+  
 
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
