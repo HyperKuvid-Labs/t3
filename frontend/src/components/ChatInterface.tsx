@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useRef, useEffect, useCallback } from "react"
 import { motion, AnimatePresence, useScroll, useTransform } from "framer-motion"
 import { gsap } from "gsap"
@@ -44,12 +43,23 @@ import {
   Database,
   Terminal,
   Search,
+  Plus,
+  Trash2,
+  Menu,
+  TreePine,
+  Eye,
+  EyeOff,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Save
 } from "lucide-react"
 import { toast } from "@/hooks/use-toast"
 import ModelSelector from "./ModelSelector"
 import ChatTabs from "./ChatTabs"
 import EmotionTokenPanel from "./EmotionTokenPanel"
 import ConversationTree from "./ConversationTree"
+import ConversationSidebar from "./ConversationSidebar"
 import {
   sendQueryToBackend,
   checkBackendHealth,
@@ -72,6 +82,8 @@ interface Message {
   }
   status?: "sending" | "sent" | "delivered" | "read" | "error"
   error?: string
+  parentMessageId?: string
+  conversationId?: number
 }
 
 interface ChatUser {
@@ -80,9 +92,27 @@ interface ChatUser {
   email: string
 }
 
-// Enhanced Markdown Components
+interface Conversation {
+  id: number
+  room_name: string
+  last_message_at: string
+  last_message?: string
+  ai_model: string
+  type: string
+  aiEnabled: boolean
+}
+
+interface MessageTree {
+  id: number
+  content: string
+  role: string
+  messageType: string
+  createdAt: string
+  user: any
+  children: MessageTree[]
+}
+
 const MarkdownComponents = {
-  // Custom code block styling
   code({ node, inline, className, children, ...props }: any) {
     const match = /language-(\w+)/.exec(className || "")
     const language = match ? match[1] : ""
@@ -129,8 +159,6 @@ const MarkdownComponents = {
       </code>
     )
   },
-
-  // Enhanced headings
   h1: ({ children }: any) => (
     <h1 className="text-2xl font-bold text-white mb-4 mt-6 pb-2 border-b border-slate-700">{children}</h1>
   ),
@@ -141,11 +169,7 @@ const MarkdownComponents = {
     </h2>
   ),
   h3: ({ children }: any) => <h3 className="text-lg font-semibold text-slate-200 mb-2 mt-4">{children}</h3>,
-
-  // Enhanced paragraphs
   p: ({ children }: any) => <p className="text-slate-200 leading-relaxed mb-3 last:mb-0">{children}</p>,
-
-  // Enhanced lists
   ul: ({ children }: any) => <ul className="space-y-2 mb-4 ml-4">{children}</ul>,
   ol: ({ children }: any) => <ol className="space-y-2 mb-4 ml-4 list-decimal">{children}</ol>,
   li: ({ children }: any) => (
@@ -154,15 +178,11 @@ const MarkdownComponents = {
       <span>{children}</span>
     </li>
   ),
-
-  // Enhanced blockquotes
   blockquote: ({ children }: any) => (
     <blockquote className="border-l-4 border-purple-500 bg-slate-800/40 pl-4 py-2 my-4 italic text-slate-300">
       {children}
     </blockquote>
   ),
-
-  // Enhanced tables
   table: ({ children }: any) => (
     <div className="overflow-x-auto my-4">
       <table className="w-full border-collapse bg-slate-800/40 rounded-lg overflow-hidden">{children}</table>
@@ -175,8 +195,6 @@ const MarkdownComponents = {
   td: ({ children }: any) => (
     <td className="px-4 py-3 text-sm text-slate-200 border-b border-slate-700/50">{children}</td>
   ),
-
-  // Enhanced links
   a: ({ href, children }: any) => (
     <a
       href={href}
@@ -187,12 +205,8 @@ const MarkdownComponents = {
       {children}
     </a>
   ),
-
-  // Enhanced emphasis
   strong: ({ children }: any) => <strong className="font-bold text-white">{children}</strong>,
   em: ({ children }: any) => <em className="italic text-purple-300">{children}</em>,
-
-  // Enhanced horizontal rule
   hr: () => <hr className="my-6 border-slate-700" />,
 }
 
@@ -213,6 +227,10 @@ const ChatInterface = () => {
   const [retryCount, setRetryCount] = useState(0)
   const [inputAreaVisible, setInputAreaVisible] = useState(true)
   const [webSearchEnabled, setWebSearchEnabled] = useState(false)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [currentConversationId, setCurrentConversationId] = useState<number | null>(null)
+  const [messageTree, setMessageTree] = useState<MessageTree[]>([])
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const messagesRef = useRef<HTMLDivElement>(null)
@@ -398,11 +416,12 @@ const ChatInterface = () => {
       content: inputValue,
       sender: "user",
       model: selectedModel,
-      emotion: selectedEmotion,
+      emotion: selectedEmotion || undefined,
       attachments: attachedFiles,
       timestamp: new Date(),
       reactions: { thumbsUp: false, thumbsDown: false },
       status: "sending",
+      conversationId: currentConversationId || undefined,
     }
 
     setMessages((prev) => [...prev, userMessage])
@@ -434,10 +453,11 @@ const ChatInterface = () => {
         content: response.response,
         sender: "ai",
         model: response.model,
-        emotion: selectedEmotion,
+        emotion: selectedEmotion || undefined,
         timestamp: new Date(),
         reactions: { thumbsUp: false, thumbsDown: false },
         status: "read",
+        conversationId: currentConversationId || undefined,
       }
 
       setMessages((prev) => [...prev, aiMessage])
@@ -479,6 +499,7 @@ const ChatInterface = () => {
         timestamp: new Date(),
         status: "error",
         error: error.message,
+        conversationId: currentConversationId || undefined,
       }
 
       setMessages((prev) => [...prev, errorMessage])
@@ -514,11 +535,141 @@ const ChatInterface = () => {
     } finally {
       setIsTyping(false)
     }
-  }, [inputValue, attachedFiles, currentUser, isBackendHealthy, selectedModel, selectedEmotion, retryCount])
+  }, [inputValue, attachedFiles, currentUser, isBackendHealthy, selectedModel, selectedEmotion, retryCount, messages, currentConversationId, webSearchEnabled])
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     setAttachedFiles((prev) => [...prev, ...files])
+  }
+
+  const flattenMessageTree = (tree: MessageTree[]): Message[] => {
+    const messages: Message[] = []
+    
+    const traverse = (nodes: MessageTree[]) => {
+      nodes.forEach(node => {
+        messages.push({
+          id: node.id.toString(),
+          content: node.content,
+          sender: node.role === 'user' ? 'user' : 'ai',
+          timestamp: new Date(node.createdAt),
+          model: node.role === 'ai' ? 'AI' : undefined
+        })
+        
+        if (node.children.length > 0) {
+          traverse(node.children)
+        }
+      })
+    }
+    
+    traverse(tree)
+    return messages
+  }
+
+  const loadConversations = async () => {
+    try {
+      const token = localStorage.getItem("authToken") || ""
+      const response = await fetch('/conversations', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      const convos = await response.json()
+      setConversations(convos)
+    } catch (error) {
+      console.error('Failed to load conversations:', error)
+    }
+  }
+
+  const switchConversation = async (conversationId: number) => {
+    try {
+      setCurrentConversationId(conversationId)
+
+      // Get token from localStorage
+      const token = localStorage.getItem("authToken") || ""
+
+      // Load messages for this conversation
+      const response = await fetch(`/conversations/${conversationId}/messages`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      const messageTree = await response.json()
+      setMessageTree(messageTree)
+
+      // Convert tree to flat message list for display
+      const flatMessages = flattenMessageTree(messageTree)
+      setMessages(flatMessages)
+
+    } catch (error) {
+      console.error('Failed to switch conversation:', error)
+    }
+  }
+
+  const createNewConversation = async () => {
+    try {
+      const token = localStorage.getItem("authToken") || ""
+
+      const response = await fetch('/conversations/new', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          name: `New Chat ${new Date().toLocaleString()}`,
+          model: selectedModel
+        })
+      })
+      
+      const newConversation = await response.json()
+      setCurrentConversationId(newConversation.conversation_id)
+      setMessages([]) // Clear current messages
+      loadConversations() // Refresh conversation list
+      
+      toast({
+        title: "New conversation created",
+        description: "Ready to start chatting!"
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to create new conversation",
+        variant: "destructive"
+      })
+    }
+  }
+
+  const deleteConversation = async (conversationId: number) => {
+    try {
+      const token = localStorage.getItem("authToken") || ""
+      
+      await fetch(`/conversations/${conversationId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      // If we're deleting the current conversation, switch to a new one
+      if (currentConversationId === conversationId) {
+        await createNewConversation()
+      }
+
+      // Refresh conversation list
+      await loadConversations()
+
+      toast({
+        title: "Conversation deleted",
+        variant: "default"
+      })
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete conversation",
+        variant: "destructive"
+      })
+    }
   }
 
   const removeFile = (index: number) => {
@@ -595,74 +746,67 @@ const ChatInterface = () => {
     return modelNames[model] || model
   }
 
+  const handleExportConversation = (format: 'txt' | 'md') => {
+    if (messages.length === 0) {
+      toast({ title: "Cannot export empty conversation", variant: "destructive" })
+      return
+    }
+    const conversationName = conversations.find(c => c.id === currentConversationId)?.room_name || "Chat Export"
+    let fileContent = ""
+    const fileExtension = `.${format}`
+
+    if (format === 'md') {
+      fileContent = `# ${conversationName}\n\n`
+      messages.forEach(msg => {
+        const sender = msg.sender === 'user' ? 'User' : `AI (${msg.model || 'N/A'})`
+        fileContent += `**${sender}** (${msg.timestamp.toLocaleString()}):\n\n${msg.content}\n\n---\n\n`
+      })
+    } else { // txt format
+      fileContent = `${conversationName}\n\n`
+      messages.forEach(msg => {
+        const sender = msg.sender === 'user' ? 'User' : `AI (${msg.model || 'N/A'})`
+        fileContent += `[${sender} at ${msg.timestamp.toLocaleString()}]\n${msg.content}\n\n`
+      })
+    }
+
+    const blob = new Blob([fileContent], { type: `text/${format}` })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${conversationName.replace(/\s+/g, '_')}${fileExtension}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast({ title: `Conversation exported as ${format.toUpperCase()}` })
+  }
+
   return (
-    <div
-      ref={containerRef}
-      className="min-h-screen flex flex-col bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden"
-    >
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl animate-pulse particle" />
-        <div className="absolute top-3/4 right-1/4 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl animate-pulse particle" />
-        <div className="absolute bottom-1/4 left-1/3 w-64 h-64 bg-pink-500/5 rounded-full blur-3xl animate-pulse particle" />
-
-        {/* Grid Pattern */}
-        <div className="absolute inset-0 bg-[linear-gradient(rgba(120,119,198,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(120,119,198,0.03)_1px,transparent_1px)] bg-[size:3rem_3rem] opacity-40" />
-
-        {/* Floating Orbs */}
-        {[...Array(12)].map((_, i) => (
-          <motion.div
-            key={i}
-            className="absolute w-2 h-2 bg-gradient-to-r from-purple-400/20 to-blue-400/20 rounded-full particle"
-            style={{
-              left: `${Math.random() * 100}%`,
-              top: `${Math.random() * 100}%`,
-            }}
-            animate={{
-              y: [0, -30, 0],
-              opacity: [0.2, 0.8, 0.2],
-              scale: [1, 1.5, 1],
-            }}
-            transition={{
-              duration: Math.random() * 3 + 2,
-              repeat: Number.POSITIVE_INFINITY,
-              delay: Math.random() * 2,
-            }}
-          />
-        ))}
-      </div>
+    <div className="flex h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden">
+      {/* Conversation Sidebar */}
+      <ConversationSidebar
+        conversations={conversations}
+        currentConversationId={currentConversationId}
+        onCreateNew={createNewConversation}
+        onSwitchConversation={switchConversation}
+        onDeleteConversation={deleteConversation}
+        isCollapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+      />
 
       {/* Conversation Tree Sidebar */}
-      <motion.div
-        className="chat-sidebar"
-        animate={{ x: isTreeOpen ? 0 : -320 }}
-        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-      >
-        <ConversationTree
-          messages={messages}
-          isOpen={isTreeOpen}
-          onToggle={() => setIsTreeOpen(!isTreeOpen)}
-          onExport={(format) => {
-            const content = messages
-              .map((msg) => `[${msg.timestamp.toLocaleString()}] ${msg.sender}: ${msg.content}`)
-              .join("\n\n")
-
-            const blob = new Blob([content], { type: "text/plain" })
-            const url = URL.createObjectURL(blob)
-            const a = document.createElement("a")
-            a.href = url
-            a.download = `conversation.${format}`
-            a.click()
-            URL.revokeObjectURL(url)
-          }}
-        />
-      </motion.div>
+      <ConversationTree
+        messages={messages}
+        isOpen={isTreeOpen}
+        onToggle={() => setIsTreeOpen(!isTreeOpen)}
+        onExport={handleExportConversation}
+      />
 
       {/* Main Chat Container */}
       <div className="flex-1 flex flex-col relative">
-        {/* Enhanced Header - MAKE STICKY */}
+        {/* Enhanced Header */}
         <motion.div
-          className="chat-header fixed top-0 left-0 right-0 z-50 border-b border-slate-800/50 backdrop-blur-xl"
+          className="chat-header fixed z-50 border-b border-slate-800/50 backdrop-blur-xl"
           style={{
             opacity: headerOpacity,
             backdropFilter: `blur(${headerBlur}px)`,
@@ -678,7 +822,7 @@ const ChatInterface = () => {
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.2 }}
-              />
+              >
                 <Button
                   onClick={() => setIsTreeOpen(!isTreeOpen)}
                   variant="outline"
@@ -698,13 +842,20 @@ const ChatInterface = () => {
                   </motion.div>
                   <div>
                     <h1 className="text-2xl font-bold bg-gradient-to-r from-white via-purple-200 to-blue-200 bg-clip-text text-transparent tracking-tight">
-                      AI Chat Studio
+                      {conversations.find((c) => c.id === currentConversationId)
+                        ?.room_name || "AI Chat Studio"}
                     </h1>
                     <div className="flex items-center gap-2 text-slate-400 text-sm font-medium">
                       <div
-                        className={`w-2 h-2 rounded-full ${isBackendHealthy ? "bg-green-400 animate-pulse" : "bg-red-400"}`}
+                        className={`w-2 h-2 rounded-full ${
+                          isBackendHealthy
+                            ? "bg-green-400 animate-pulse"
+                            : "bg-red-400"
+                        }`}
                       />
-                      {isBackendHealthy ? "Connected to backend" : "Backend offline"}
+                      {isBackendHealthy
+                        ? "Connected to backend"
+                        : "Backend offline"}
                       {currentUser && (
                         <>
                           <span className="text-slate-600">•</span>
@@ -717,263 +868,311 @@ const ChatInterface = () => {
                     </div>
                   </div>
                 </div>
+              </motion.div>
 
-                <motion.div
-                  className="flex items-center gap-3"
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 }}
-                >
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-slate-400 hover:text-white"
-                      onClick={() => checkBackendHealth().then(setIsBackendHealthy)}
-                    >
-                      {isBackendHealthy ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}
-                    </Button>
-                    <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
-                      <Database className="w-4 h-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white">
-                      <Settings className="w-4 h-4" />
-                    </Button>
-                  </div>
-                  <ModelSelector
-                    selectedModel={selectedModel}
-                    onModelSelect={(modelId: string) => setSelectedModel(modelId as ModelType)}
-                  />
-                </motion.div>
-              </div>
-
-              {/* Tab Navigation with Stats */}
               <motion.div
-                className="flex items-center justify-between"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.4 }}
+                className="flex items-center gap-3"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 }}
               >
-                <ChatTabs activeTab={activeTab} onTabChange={setActiveTab} />
-
-                <div className="flex items-center gap-4 text-sm text-slate-400">
-                  <div className="flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4" />
-                    <span>{messages.length} messages</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    <span>Model: {getModelDisplayName(selectedModel)}</span>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-slate-400 hover:text-white"
+                    onClick={() =>
+                      checkBackendHealth().then(setIsBackendHealthy)
+                    }
+                  >
+                    {isBackendHealthy ? (
+                      <Wifi className="w-4 h-4" />
+                    ) : (
+                      <WifiOff className="w-4 h-4" />
+                    )}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <Database className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-slate-400 hover:text-white"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </Button>
                 </div>
+                <ModelSelector
+                  selectedModel={selectedModel}
+                  onModelSelect={(modelId: string) =>
+                    setSelectedModel(modelId as ModelType)
+                  }
+                />
               </motion.div>
             </div>
-          </motion.div>
 
-          {/* Messages Area - MAKE SCROLLABLE */}
-          <div
-            ref={messagesRef}
-            className="chat-main flex-1 overflow-y-auto relative scroll-smooth mt-[180px] mb-[140px]"
-            style={{
-              scrollBehavior: "smooth",
-              height: "calc(100vh - 320px)", // Account for header and input heights
-            }}
-          >
-            <div className="max-w-6xl mx-auto p-6">
-              <AnimatePresence mode="popLayout">
-                {messages.length === 0 ? (
+            {/* Tab Navigation with Stats */}
+            <motion.div
+              className="flex items-center justify-between"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              <ChatTabs activeTab={activeTab} onTabChange={setActiveTab} />
+
+              <div className="flex items-center gap-4 text-sm text-slate-400">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4" />
+                  <span>{messages.length} messages</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4" />
+                  <span>Model: {getModelDisplayName(selectedModel)}</span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </motion.div>
+
+        {/* Messages Area */}
+        <div
+          ref={messagesRef}
+          className="chat-main flex-1 overflow-y-auto relative scroll-smooth mt-[180px] mb-[140px]"
+          style={{
+            scrollBehavior: "smooth",
+            height: "calc(100vh - 320px)", // Account for header and input heights
+          }}
+        >
+          <div className="max-w-6xl mx-auto p-6">
+            <AnimatePresence mode="popLayout">
+              {messages.length === 0 ? (
+                <motion.div
+                  className="text-center py-20"
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5, duration: 0.8 }}
+                >
                   <motion.div
-                    className="text-center py-20"
-                    initial={{ opacity: 0, y: 30 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5, duration: 0.8 }}
+                    className="relative w-24 h-24 mx-auto mb-8"
+                    animate={{
+                      rotate: [0, 5, -5, 0],
+                      scale: [1, 1.05, 1],
+                    }}
+                    transition={{
+                      duration: 4,
+                      repeat: Number.POSITIVE_INFINITY,
+                      ease: "easeInOut",
+                    }}
                   >
-                    <motion.div
-                      className="relative w-24 h-24 mx-auto mb-8"
-                      animate={{
-                        rotate: [0, 5, -5, 0],
-                        scale: [1, 1.05, 1],
-                      }}
-                      transition={{
-                        duration: 4,
-                        repeat: Number.POSITIVE_INFINITY,
-                        ease: "easeInOut",
-                      }}
-                    >
-                      <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-blue-600/20 rounded-3xl border border-purple-500/20" />
-                      <div className="absolute inset-2 bg-gradient-to-br from-purple-600 to-blue-600 rounded-2xl flex items-center justify-center">
-                        <Sparkles className="w-10 h-10 text-white" />
-                      </div>
-                      <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-400 rounded-full flex items-center justify-center">
-                        <Zap className="w-3 h-3 text-white" />
-                      </div>
-                    </motion.div>
-
-                    <h3 className="text-4xl font-bold text-white mb-4 tracking-tight">Start Your AI Journey</h3>
-                    <p className="text-xl text-slate-400 mb-2 max-w-md mx-auto leading-relaxed">
-                      Choose your preferred model and begin an intelligent conversation
-                    </p>
-                    <p className="text-sm text-slate-500">Add emotion tokens for personalized responses</p>
-
-                    {/* Connection Status */}
-                    {!isBackendHealthy && (
-                      <motion.div
-                        className="mt-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl max-w-md mx-auto"
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                      >
-                        <div className="flex items-center gap-2 text-red-400">
-                          <WifiOff className="w-5 h-5" />
-                          <span className="font-medium">Backend Offline</span>
-                        </div>
-                        <p className="text-sm text-red-300 mt-1">
-                          Please ensure the backend server is running on localhost:8000
-                        </p>
-                      </motion.div>
-                    )}
-
-                    {/* Quick Start Suggestions */}
-                    {isBackendHealthy && (
-                      <motion.div
-                        className="mt-8 flex flex-wrap justify-center gap-3"
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.8 }}
-                      >
-                        {["Help me write code", "Explain a concept", "Creative writing", "Problem solving"].map(
-                          (suggestion, index) => (
-                            <motion.button
-                              key={suggestion}
-                              onClick={() => setInputValue(suggestion)}
-                              className="px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-purple-500/50 rounded-xl text-slate-300 hover:text-white transition-all duration-300"
-                              whileHover={{ scale: 1.05, y: -2 }}
-                              whileTap={{ scale: 0.95 }}
-                              initial={{ opacity: 0, y: 20 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: 0.9 + index * 0.1 }}
-                            >
-                              {suggestion}
-                            </motion.button>
-                          ),
-                        )}
-                      </motion.div>
-                    )}
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-blue-600/20 rounded-3xl border border-purple-500/20" />
+                    <div className="absolute inset-2 bg-gradient-to-br from-purple-600 to-blue-600 rounded-2xl flex items-center justify-center">
+                      <Sparkles className="w-10 h-10 text-white" />
+                    </div>
+                    <div className="absolute -top-2 -right-2 w-6 h-6 bg-green-400 rounded-full flex items-center justify-center">
+                      <Zap className="w-3 h-3 text-white" />
+                    </div>
                   </motion.div>
-                ) : (
-                  <div className="space-y-8">
-                    {messages.map((message, index) => (
-                      <motion.div
-                        key={message.id}
-                        className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}
-                        initial={{ opacity: 0, y: 30, scale: 0.9 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -30, scale: 0.9 }}
-                        transition={{
-                          delay: index * 0.05,
-                          duration: 0.5,
-                          ease: "easeOut",
-                        }}
-                        layout
+
+                  <h3 className="text-4xl font-bold text-white mb-4 tracking-tight">
+                    Start Your AI Journey
+                  </h3>
+                  <p className="text-xl text-slate-400 mb-2 max-w-md mx-auto leading-relaxed">
+                    Choose your preferred model and begin an intelligent
+                    conversation
+                  </p>
+                  <p className="text-sm text-slate-500">
+                    Add emotion tokens for personalized responses
+                  </p>
+
+                  {/* Connection Status */}
+                  {!isBackendHealthy && (
+                    <motion.div
+                      className="mt-6 p-4 bg-red-500/10 border border-red-500/30 rounded-xl max-w-md mx-auto"
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                    >
+                      <div className="flex items-center gap-2 text-red-400">
+                        <WifiOff className="w-5 h-5" />
+                        <span className="font-medium">Backend Offline</span>
+                      </div>
+                      <p className="text-sm text-red-300 mt-1">
+                        Please ensure the backend server is running on
+                        localhost:8000
+                      </p>
+                    </motion.div>
+                  )}
+
+                  {/* Quick Start Suggestions */}
+                  {isBackendHealthy && (
+                    <motion.div
+                      className="mt-8 flex flex-wrap justify-center gap-3"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.8 }}
+                    >
+                      {[
+                        "Help me write code",
+                        "Explain a concept",
+                        "Creative writing",
+                        "Problem solving",
+                      ].map((suggestion, index) => (
+                        <motion.button
+                          key={suggestion}
+                          onClick={() => setInputValue(suggestion)}
+                          className="px-4 py-2 bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-purple-500/50 rounded-xl text-slate-300 hover:text-white transition-all duration-300"
+                          whileHover={{ scale: 1.05, y: -2 }}
+                          whileTap={{ scale: 0.95 }}
+                          initial={{ opacity: 0, y: 20 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.9 + index * 0.1 }}
+                        >
+                          {suggestion}
+                        </motion.button>
+                      ))}
+                    </motion.div>
+                  )}
+                </motion.div>
+              ) : (
+                <div className="space-y-8">
+                  {messages.map((message, index) => (
+                    <motion.div
+                      key={message.id}
+                      className={`flex ${
+                        message.sender === "user"
+                          ? "justify-end"
+                          : "justify-start"
+                      }`}
+                      initial={{ opacity: 0, y: 30, scale: 0.9 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -30, scale: 0.9 }}
+                      transition={{
+                        delay: index * 0.05,
+                        duration: 0.5,
+                        ease: "easeOut",
+                      }}
+                      layout
+                    >
+                      <div
+                        className={`max-w-[75%] group ${
+                          message.sender === "user" ? "ml-16" : "mr-16"
+                        }`}
                       >
-                        <div className={`max-w-[75%] group ${message.sender === "user" ? "ml-16" : "mr-16"}`}>
-                          {/* Message Header */}
+                        {/* Message Header */}
+                        <div
+                          className={`flex items-center gap-3 mb-3 ${
+                            message.sender === "user"
+                              ? "justify-end"
+                              : "justify-start"
+                          }`}
+                        >
+                          {message.sender === "ai" && (
+                            <motion.div
+                              className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-lg"
+                              whileHover={{ scale: 1.1, rotate: 5 }}
+                            >
+                              <Bot className="w-5 h-5 text-white" />
+                            </motion.div>
+                          )}
+
                           <div
-                            className={`flex items-center gap-3 mb-3 ${
-                              message.sender === "user" ? "justify-end" : "justify-start"
+                            className={`flex items-center gap-2 ${
+                              message.sender === "user"
+                                ? "flex-row-reverse"
+                                : ""
                             }`}
                           >
-                            {message.sender === "ai" && (
-                              <motion.div
-                                className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-lg"
-                                whileHover={{ scale: 1.1, rotate: 5 }}
+                            <span className="text-sm font-semibold text-white">
+                              {message.sender === "user"
+                                ? "You"
+                                : "AI Assistant"}
+                            </span>
+                            {message.model && (
+                              <Badge
+                                variant="outline"
+                                className="border-purple-500/30 text-purple-400 text-xs bg-purple-500/10"
                               >
-                                <Bot className="w-5 h-5 text-white" />
-                              </motion.div>
+                                {getModelDisplayName(message.model)}
+                              </Badge>
                             )}
-
-                            <div
-                              className={`flex items-center gap-2 ${message.sender === "user" ? "flex-row-reverse" : ""}`}
-                            >
-                              <span className="text-sm font-semibold text-white">
-                                {message.sender === "user" ? "You" : "AI Assistant"}
-                              </span>
-                              {message.model && (
-                                <Badge
-                                  variant="outline"
-                                  className="border-purple-500/30 text-purple-400 text-xs bg-purple-500/10"
-                                >
-                                  {getModelDisplayName(message.model)}
-                                </Badge>
-                              )}
-                              {message.emotion && (
-                                <Badge
-                                  variant="outline"
-                                  className="border-green-500/30 text-green-400 text-xs bg-green-500/10"
-                                >
-                                  {message.emotion}
-                                </Badge>
-                              )}
-                            </div>
-
-                            {message.sender === "user" && (
-                              <motion.div
-                                className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg"
-                                whileHover={{ scale: 1.1, rotate: -5 }}
+                            {message.emotion && (
+                              <Badge
+                                variant="outline"
+                                className="border-green-500/30 text-green-400 text-xs bg-green-500/10"
                               >
-                                <User className="w-5 h-5 text-white" />
-                              </motion.div>
+                                {message.emotion}
+                              </Badge>
                             )}
                           </div>
 
-                          {/* Message Bubble with Enhanced Markdown Rendering */}
-                          <motion.div
-                            className={`relative p-6 rounded-3xl backdrop-blur-sm border transition-all duration-300 group-hover:shadow-xl ${
-                              message.sender === "user"
-                                ? message.status === "error"
-                                  ? "bg-gradient-to-br from-red-600/15 to-red-500/15 border-red-500/25 group-hover:border-red-400/40 shadow-red-500/10"
-                                  : "bg-gradient-to-br from-blue-600/15 to-cyan-500/15 border-blue-500/25 group-hover:border-blue-400/40 shadow-blue-500/10"
-                                : message.status === "error"
-                                  ? "bg-red-800/60 border-red-700/50 group-hover:border-red-600/70 shadow-red-900/20"
-                                  : "bg-slate-800/60 border-slate-700/50 group-hover:border-slate-600/70 shadow-slate-900/20"
-                            }`}
-                            whileHover={{ scale: 1.01, y: -2 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            {/* Enhanced Message Content with Markdown - FIXED */}
-                            <div className="prose prose-invert max-w-none">
-                              {message.sender === "ai" ? (
-                                <div className="text-slate-200 leading-relaxed">
-                                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
-                                    {message.content}
-                                  </ReactMarkdown>
-                                </div>
-                              ) : (
-                                <p className="text-white leading-relaxed font-medium text-[15px] whitespace-pre-wrap">
+                          {message.sender === "user" && (
+                            <motion.div
+                              className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-lg"
+                              whileHover={{ scale: 1.1, rotate: -5 }}
+                            >
+                              <User className="w-5 h-5 text-white" />
+                            </motion.div>
+                          )}
+                        </div>
+
+                        {/* Message Bubble with Enhanced Markdown Rendering */}
+                        <motion.div
+                          className={`relative p-6 rounded-3xl backdrop-blur-sm border transition-all duration-300 group-hover:shadow-xl ${
+                            message.sender === "user"
+                              ? message.status === "error"
+                                ? "bg-gradient-to-br from-red-600/15 to-red-500/15 border-red-500/25 group-hover:border-red-400/40 shadow-red-500/10"
+                                : "bg-gradient-to-br from-blue-600/15 to-cyan-500/15 border-blue-500/25 group-hover:border-blue-400/40 shadow-blue-500/10"
+                              : message.status === "error"
+                              ? "bg-red-800/60 border-red-700/50 group-hover:border-red-600/70 shadow-red-900/20"
+                              : "bg-slate-800/60 border-slate-700/50 group-hover:border-slate-600/70 shadow-slate-900/20"
+                          }`}
+                          whileHover={{ scale: 1.01, y: -2 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          {/* Enhanced Message Content with Markdown */}
+                          <div className="prose prose-invert max-w-none">
+                            {message.sender === "ai" ? (
+                              <div className="text-slate-200 leading-relaxed">
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  components={MarkdownComponents}
+                                >
                                   {message.content}
-                                </p>
+                                </ReactMarkdown>
+                              </div>
+                            ) : (
+                              <p className="text-white leading-relaxed font-medium text-[15px] whitespace-pre-wrap">
+                                {message.content}
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Error Details */}
+                          {message.error && (
+                            <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                              <p className="text-red-300 text-sm">
+                                {message.error}
+                              </p>
+                              {message.sender === "user" && (
+                                <Button
+                                  onClick={() => handleRetryMessage(message.id)}
+                                  variant="outline"
+                                  size="sm"
+                                  className="mt-2 border-red-500/30 text-red-400 hover:bg-red-500/10"
+                                >
+                                  <RefreshCw className="w-3 h-3 mr-1" />
+                                  Retry
+                                </Button>
                               )}
                             </div>
+                          )}
 
-                            {/* Error Details */}
-                            {message.error && (
-                              <div className="mt-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
-                                <p className="text-red-300 text-sm">{message.error}</p>
-                                {message.sender === "user" && (
-                                  <Button
-                                    onClick={() => handleRetryMessage(message.id)}
-                                    variant="outline"
-                                    size="sm"
-                                    className="mt-2 border-red-500/30 text-red-400 hover:bg-red-500/10"
-                                  >
-                                    <RefreshCw className="w-3 h-3 mr-1" />
-                                    Retry
-                                  </Button>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Attachments */}
-                            {message.attachments && message.attachments.length > 0 && (
+                          {/* Attachments */}
+                          {message.attachments &&
+                            message.attachments.length > 0 && (
                               <div className="mt-4 flex flex-wrap gap-2">
                                 {message.attachments.map((file, fileIndex) => (
                                   <motion.div
@@ -988,185 +1187,204 @@ const ChatInterface = () => {
                               </div>
                             )}
 
-                            {/* Message Footer */}
-                            <div className="mt-4 flex items-center justify-between">
-                              <div className="flex items-center gap-2 text-xs text-slate-400">
-                                <span>{message.timestamp.toLocaleTimeString()}</span>
-                                {message.sender === "user" && getStatusIcon(message.status, message.error)}
-                              </div>
-
-                              {/* Action Buttons */}
-                              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                                {message.sender === "ai" && !message.error && (
-                                  <>
-                                    <motion.button
-                                      onClick={() => handleReaction(message.id, "thumbsUp")}
-                                      whileHover={{ scale: 1.1 }}
-                                      whileTap={{ scale: 0.95 }}
-                                      className={`p-2 rounded-lg transition-all duration-200 ${
-                                        message.reactions?.thumbsUp
-                                          ? "bg-green-500/20 text-green-400"
-                                          : "bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-white"
-                                      }`}
-                                    >
-                                      <ThumbsUp className="w-3 h-3" />
-                                    </motion.button>
-
-                                    <motion.button
-                                      onClick={() => handleReaction(message.id, "thumbsDown")}
-                                      whileHover={{ scale: 1.1 }}
-                                      whileTap={{ scale: 0.95 }}
-                                      className={`p-2 rounded-lg transition-all duration-200 ${
-                                        message.reactions?.thumbsDown
-                                          ? "bg-red-500/20 text-red-400"
-                                          : "bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-white"
-                                      }`}
-                                    >
-                                      <ThumbsDown className="w-3 h-3" />
-                                    </motion.button>
-
-                                    <motion.button
-                                      whileHover={{ scale: 1.1, rotate: 180 }}
-                                      whileTap={{ scale: 0.95 }}
-                                      className="p-2 rounded-lg bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-white transition-all duration-200"
-                                    >
-                                      <RotateCcw className="w-3 h-3" />
-                                    </motion.button>
-                                  </>
-                                )}
-
-                                <motion.button
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(message.content)
-                                    toast({
-                                      title: "Copied",
-                                      description: "Message copied to clipboard",
-                                    })
-                                  }}
-                                  whileHover={{ scale: 1.1 }}
-                                  whileTap={{ scale: 0.95 }}
-                                  className="p-2 rounded-lg bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-white transition-all duration-200"
-                                >
-                                  <Copy className="w-3 h-3" />
-                                </motion.button>
-
-                                <motion.button
-                                  whileHover={{ scale: 1.1 }}
-                                  whileTap={{ scale: 0.95 }}
-                                  className="p-2 rounded-lg bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-white transition-all duration-200"
-                                >
-                                  <MoreHorizontal className="w-3 h-3" />
-                                </motion.button>
-                              </div>
+                          {/* Message Footer */}
+                          <div className="mt-4 flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-xs text-slate-400">
+                              <span>
+                                {message.timestamp.toLocaleTimeString()}
+                              </span>
+                              {message.sender === "user" &&
+                                getStatusIcon(message.status, message.error)}
                             </div>
-                          </motion.div>
-                        </div>
-                      </motion.div>
-                    ))}
 
-                    {/* Enhanced Typing Indicator */}
-                    <AnimatePresence>
-                      {isTyping && (
-                        <motion.div
-                          className="flex justify-start mr-16"
-                          initial={{ opacity: 0, y: 30, scale: 0.9 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: -30, scale: 0.9 }}
-                          transition={{ duration: 0.3 }}
-                        >
-                          <div className="flex items-center gap-3">
-                            <motion.div
-                              className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-lg"
-                              animate={{ scale: [1, 1.1, 1] }}
-                              transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY }}
-                            >
-                              <Bot className="w-5 h-5 text-white" />
-                            </motion.div>
-                            <div className="p-4 rounded-3xl bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">
-                              <div className="flex items-center gap-1">
-                                <span className="text-sm text-slate-400 mr-2">
-                                  {getModelDisplayName(selectedModel)} is thinking
-                                </span>
-                                {[0, 1, 2].map((i) => (
-                                  <motion.div
-                                    key={i}
-                                    className="w-2 h-2 bg-purple-400 rounded-full"
-                                    animate={{
-                                      scale: [1, 1.5, 1],
-                                      opacity: [0.5, 1, 0.5],
-                                    }}
-                                    transition={{
-                                      duration: 1.5,
-                                      repeat: Number.POSITIVE_INFINITY,
-                                      delay: i * 0.2,
-                                    }}
-                                  />
-                                ))}
-                              </div>
+                            {/* Action Buttons */}
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                              {message.sender === "ai" && !message.error && (
+                                <>
+                                  <motion.button
+                                    onClick={() =>
+                                      handleReaction(message.id, "thumbsUp")
+                                    }
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className={`p-2 rounded-lg transition-all duration-200 ${
+                                      message.reactions?.thumbsUp
+                                        ? "bg-green-500/20 text-green-400"
+                                        : "bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-white"
+                                    }`}
+                                  >
+                                    <ThumbsUp className="w-3 h-3" />
+                                  </motion.button>
+
+                                  <motion.button
+                                    onClick={() =>
+                                      handleReaction(message.id, "thumbsDown")
+                                    }
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className={`p-2 rounded-lg transition-all duration-200 ${
+                                      message.reactions?.thumbsDown
+                                        ? "bg-red-500/20 text-red-400"
+                                        : "bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-white"
+                                    }`}
+                                  >
+                                    <ThumbsDown className="w-3 h-3" />
+                                  </motion.button>
+
+                                  <motion.button
+                                    whileHover={{ scale: 1.1, rotate: 180 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className="p-2 rounded-lg bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-white transition-all duration-200"
+                                  >
+                                    <RotateCcw className="w-3 h-3" />
+                                  </motion.button>
+                                </>
+                              )}
+
+                              <motion.button
+                                onClick={() => {
+                                  navigator.clipboard.writeText(
+                                    message.content
+                                  );
+                                  toast({
+                                    title: "Copied",
+                                    description: "Message copied to clipboard",
+                                  });
+                                }}
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.95 }}
+                                className="p-2 rounded-lg bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-white transition-all duration-200"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </motion.button>
+
+                              <motion.button
+                                whileHover={{ scale: 1.1 }}
+                                whileTap={{ scale: 0.95 }}
+                                className="p-2 rounded-lg bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-white transition-all duration-200"
+                              >
+                                <MoreHorizontal className="w-3 h-3" />
+                              </motion.button>
                             </div>
                           </div>
                         </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
+                      </div>
+                    </motion.div>
+                  ))}
 
-          {/* Enhanced Input Area - MAKE STICKY */}
-          <motion.div
-            className="chat-input fixed bottom-0 left-0 right-0 z-50 border-t border-slate-800/50 backdrop-blur-xl bg-slate-900/50"
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6, duration: 0.8 }}
-          >
-            <div className="max-w-6xl mx-auto p-6">
-              {/* File Attachments Preview */}
-              <AnimatePresence>
-                {attachedFiles.length > 0 && (
-                  <motion.div
-                    className="mb-4 flex flex-wrap gap-3"
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    {attachedFiles.map((file, index) => (
+                  {/* Enhanced Typing Indicator */}
+                  <AnimatePresence>
+                    {isTyping && (
                       <motion.div
-                        key={index}
-                        className="flex items-center gap-3 bg-slate-800/60 px-4 py-3 rounded-2xl border border-slate-700/50 backdrop-blur-sm"
-                        initial={{ opacity: 0, scale: 0.8, x: -20 }}
-                        animate={{ opacity: 1, scale: 1, x: 0 }}
-                        exit={{ opacity: 0, scale: 0.8, x: 20 }}
-                        whileHover={{ scale: 1.02, y: -2 }}
+                        className="flex justify-start mr-16"
+                        initial={{ opacity: 0, y: 30, scale: 0.9 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -30, scale: 0.9 }}
+                        transition={{ duration: 0.3 }}
                       >
-                        <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                          <FileText className="w-4 h-4 text-purple-400" />
+                        <div className="flex items-center gap-3">
+                          <motion.div
+                            className="w-10 h-10 rounded-2xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-lg"
+                            animate={{ scale: [1, 1.1, 1] }}
+                            transition={{
+                              duration: 1,
+                              repeat: Number.POSITIVE_INFINITY,
+                            }}
+                          >
+                            <Bot className="w-5 h-5 text-white" />
+                          </motion.div>
+                          <div className="p-4 rounded-3xl bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">
+                            <div className="flex items-center gap-1">
+                              <span className="text-sm text-slate-400 mr-2">
+                                {getModelDisplayName(selectedModel)} is thinking
+                              </span>
+                              {[0, 1, 2].map((i) => (
+                                <motion.div
+                                  key={i}
+                                  className="w-2 h-2 bg-purple-400 rounded-full"
+                                  animate={{
+                                    scale: [1, 1.5, 1],
+                                    opacity: [0.5, 1, 0.5],
+                                  }}
+                                  transition={{
+                                    duration: 1.5,
+                                    repeat: Number.POSITIVE_INFINITY,
+                                    delay: i * 0.2,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <span className="text-sm text-white font-medium block">{file.name}</span>
-                          <span className="text-xs text-slate-400">{(file.size / 1024).toFixed(1)} KB</span>
-                        </div>
-                        <motion.button
-                          onClick={() => removeFile(index)}
-                          className="text-slate-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-slate-700/50"
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                        >
-                          <X className="w-4 h-4" />
-                        </motion.button>
                       </motion.div>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* Enhanced Input Area */}
+        <motion.div
+          className="chat-input fixed bottom-0 left-0 right-0 z-50 border-t border-slate-800/50 backdrop-blur-xl bg-slate-900/50"
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6, duration: 0.8 }}
+        >
+          <div className="max-w-6xl mx-auto p-6">
+            {/* File Attachments Preview */}
+            <AnimatePresence>
+              {attachedFiles.length > 0 && (
+                <motion.div
+                  className="mb-4 flex flex-wrap gap-3"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {attachedFiles.map((file, index) => (
+                    <motion.div
+                      key={index}
+                      className="flex items-center gap-3 bg-slate-800/60 px-4 py-3 rounded-2xl border border-slate-700/50 backdrop-blur-sm"
+                      initial={{ opacity: 0, scale: 0.8, x: -20 }}
+                      animate={{ opacity: 1, scale: 1, x: 0 }}
+                      exit={{ opacity: 0, scale: 0.8, x: 20 }}
+                      whileHover={{ scale: 1.02, y: -2 }}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                        <FileText className="w-4 h-4 text-purple-400" />
+                      </div>
+                      <div>
+                        <span className="text-sm text-white font-medium block">
+                          {file.name}
+                        </span>
+                        <span className="text-xs text-slate-400">
+                          {(file.size / 1024).toFixed(1)} KB
+                        </span>
+                      </div>
+                      <motion.button
+                        onClick={() => removeFile(index)}
+                        className="text-slate-400 hover:text-white transition-colors p-1 rounded-lg hover:bg-slate-700/50"
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <X className="w-4 h-4" />
+                      </motion.button>
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Input Controls */}
             <div className="flex gap-4 items-end">
               {/* Left Controls */}
               <div className="flex gap-3">
-                <EmotionTokenPanel selectedEmotion={selectedEmotion} onEmotionSelect={setSelectedEmotion} />
+                <EmotionTokenPanel
+                  selectedEmotion={selectedEmotion}
+                  onEmotionSelect={setSelectedEmotion}
+                />
 
                 {/* File Upload */}
                 <div className="relative">
@@ -1177,7 +1395,10 @@ const ChatInterface = () => {
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     disabled={!isBackendHealthy}
                   />
-                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <motion.div
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                  >
                     <Button
                       variant="outline"
                       size="sm"
@@ -1190,7 +1411,10 @@ const ChatInterface = () => {
                 </div>
 
                 {/* Voice Recording */}
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
                   <Button
                     variant="outline"
                     size="sm"
@@ -1207,7 +1431,10 @@ const ChatInterface = () => {
                 </motion.div>
 
                 {/* Quick Actions */}
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <motion.div
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
                   <Button
                     variant="outline"
                     size="sm"
@@ -1231,8 +1458,8 @@ const ChatInterface = () => {
                     !isBackendHealthy
                       ? "Backend offline - please check connection..."
                       : !currentUser
-                        ? "Please log in to start chatting..."
-                        : "Type your message... (Shift+Enter for new line)"
+                      ? "Please log in to start chatting..."
+                      : "Type your message... (Shift+Enter for new line)"
                   }
                   disabled={!isBackendHealthy || !currentUser || isTyping}
                   className="resize-none bg-slate-800/60 border-slate-700/50 text-white placeholder:text-slate-400 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 rounded-2xl backdrop-blur-sm transition-all duration-300 font-medium text-[15px] leading-relaxed pr-12 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -1241,11 +1468,16 @@ const ChatInterface = () => {
                 />
 
                 {/* Character Count */}
-                <div className="absolute bottom-2 right-3 text-xs text-slate-500">{inputValue.length}/2000</div>
+                <div className="absolute bottom-2 right-3 text-xs text-slate-500">
+                  {inputValue.length}/2000
+                </div>
               </div>
 
               {/* Send Button */}
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
                 <Button
                   onClick={handleSendMessage}
                   disabled={
@@ -1277,20 +1509,38 @@ const ChatInterface = () => {
                 >
                   <div className="flex items-center gap-2 mb-3">
                     <Zap className="w-4 h-4 text-yellow-400" />
-                    <span className="text-sm font-medium text-white">Quick Actions</span>
+                    <span className="text-sm font-medium text-white">
+                      Quick Actions
+                    </span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {[
-                      { icon: Copy, label: "Summarize", action: "Please summarize the above conversation" },
-                      { icon: Star, label: "Improve", action: "How can I improve this?" },
-                      { icon: Heart, label: "Explain", action: "Please explain this in simple terms" },
-                      { icon: Smile, label: "Continue", action: "Please continue with this topic" },
+                      {
+                        icon: Copy,
+                        label: "Summarize",
+                        action: "Please summarize the above conversation",
+                      },
+                      {
+                        icon: Star,
+                        label: "Improve",
+                        action: "How can I improve this?",
+                      },
+                      {
+                        icon: Heart,
+                        label: "Explain",
+                        action: "Please explain this in simple terms",
+                      },
+                      {
+                        icon: Smile,
+                        label: "Continue",
+                        action: "Please continue with this topic",
+                      },
                     ].map((item, index) => (
                       <motion.button
                         key={item.label}
                         onClick={() => {
-                          setInputValue(item.action)
-                          setShowQuickActions(false)
+                          setInputValue(item.action);
+                          setShowQuickActions(false);
                         }}
                         className="flex items-center gap-2 px-3 py-2 bg-slate-700/50 hover:bg-slate-600/50 rounded-xl text-sm text-slate-300 hover:text-white transition-all duration-200"
                         whileHover={{ scale: 1.05, y: -2 }}
@@ -1307,10 +1557,11 @@ const ChatInterface = () => {
                 </motion.div>
               )}
             </AnimatePresence>
-          </motion.div>
-        </div>
+          </div>
+        </motion.div>
       </div>
-  )
+    </div>
+  );
 }
 
 export default ChatInterface

@@ -1,8 +1,9 @@
-
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChevronLeft, ChevronRight, MessageSquare, Download, Save } from 'lucide-react';
+import { toast } from '@/hooks/use-toast';
 
 interface ConversationNode {
   id: string;
@@ -30,93 +31,112 @@ const ConversationTree = ({ messages, isOpen, onToggle, onExport }: Conversation
         onClick={onToggle}
         variant="outline"
         size="sm"
-        className="fixed left-4 top-20 z-40 border-neon-blue/50 hover:border-neon-blue text-neon-text hover:bg-neon-blue/10"
+        className="fixed left-4 top-20 z-40 border-slate-700/50 hover:border-purple-500/50 bg-slate-800/50 hover:bg-slate-700/50"
       >
         {isOpen ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
       </Button>
 
       {/* Panel */}
-      <div
-        className={`fixed left-0 top-16 h-[calc(100vh-4rem)] bg-neon-dark/95 backdrop-blur-sm border-r border-neon-blue/20 z-30 transition-all duration-300 ${
-          isOpen ? 'w-80 translate-x-0' : 'w-0 -translate-x-full'
-        }`}
+      <motion.div
+        initial={false}
+        animate={{
+          x: isOpen ? 0 : -320,
+          opacity: isOpen ? 1 : 0
+        }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        className="fixed left-0 top-16 h-[calc(100vh-4rem)] bg-slate-900/95 backdrop-blur-sm border-r border-slate-700/50 z-30 w-80"
       >
-        {isOpen && (
-          <div className="h-full flex flex-col">
-            {/* Header */}
-            <div className="p-4 border-b border-neon-blue/20">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-neon-text">Conversation Tree</h3>
-                <div className="flex gap-1">
-                  <Button
-                    onClick={() => onExport('md')}
-                    variant="ghost"
-                    size="sm"
-                    className="text-neon-muted hover:text-neon-text"
-                  >
-                    <Download className="w-4 h-4" />
-                  </Button>
-                  <Button
-                    onClick={() => onExport('txt')}
-                    variant="ghost"
-                    size="sm"
-                    className="text-neon-muted hover:text-neon-text"
-                  >
-                    <Save className="w-4 h-4" />
-                  </Button>
-                </div>
+        <div className="h-full flex flex-col">
+          {/* Header */}
+          <div className="p-4 border-b border-slate-700/50">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-semibold text-white">Conversation History</h3>
+              <div className="flex gap-1">
+                <Button
+                  onClick={() => {
+                    onExport('md');
+                    toast({ title: "Exported as Markdown" });
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="text-slate-400 hover:text-white"
+                >
+                  <Download className="w-4 h-4" />
+                </Button>
+                <Button
+                  onClick={() => {
+                    onExport('txt');
+                    toast({ title: "Exported as Text" });
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="text-slate-400 hover:text-white"
+                >
+                  <Save className="w-4 h-4" />
+                </Button>
               </div>
-              <Badge variant="outline" className="border-neon-blue/50 text-neon-blue">
-                {messages.length} messages
-              </Badge>
             </div>
-
-            {/* Messages List */}
-            <div className="flex-1 overflow-auto p-4 space-y-3">
-              {messages.length === 0 ? (
-                <div className="text-center py-8 text-neon-muted">
-                  <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                  <p>No messages yet</p>
-                </div>
-              ) : (
-                messages.map((message) => (
-                  <div
-                    key={message.id}
-                    onClick={() => setSelectedMessage(message.id)}
-                    className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
-                      selectedMessage === message.id
-                        ? 'bg-neon-blue/20 border border-neon-blue'
-                        : 'hover:bg-neon-muted/10 border border-transparent hover:border-neon-blue/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge
-                        variant="outline"
-                        className={
-                          message.sender === 'user'
-                            ? 'border-neon-green/50 text-neon-green'
-                            : 'border-neon-purple/50 text-neon-purple'
-                        }
-                      >
-                        {message.sender}
-                      </Badge>
-                      {message.model && (
-                        <Badge variant="outline" className="border-neon-blue/50 text-neon-blue text-xs">
-                          {message.model}
-                        </Badge>
-                      )}
-                    </div>
-                    <p className="text-sm text-neon-text truncate">{message.content}</p>
-                    <p className="text-xs text-neon-muted mt-1">
-                      {message.timestamp.toLocaleTimeString()}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
+            <Badge variant="outline" className="border-purple-500/50 text-purple-400">
+              {messages.length} messages
+            </Badge>
           </div>
-        )}
-      </div>
+
+          {/* Messages List */}
+          <div className="flex-1 overflow-auto p-4 space-y-3">
+            {messages.length === 0 ? (
+              <motion.div
+                className="text-center py-8 text-slate-500"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ duration: 0.3 }}
+              >
+                <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p>No messages yet</p>
+              </motion.div>
+            ) : (
+              messages.map((message) => (
+                <motion.div
+                  key={message.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.2 }}
+                  onClick={() => setSelectedMessage(message.id)}
+                  className={`p-3 rounded-lg cursor-pointer transition-all duration-200 ${
+                    selectedMessage === message.id
+                      ? 'bg-purple-500/20 border border-purple-500/50'
+                      : 'hover:bg-slate-800/50 border border-transparent hover:border-purple-500/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge
+                      variant="outline"
+                      className={
+                        message.sender === 'user'
+                          ? 'border-green-500/50 text-green-400'
+                          : 'border-blue-500/50 text-blue-400'
+                      }
+                    >
+                      {message.sender}
+                    </Badge>
+                    {message.model && (
+                      <Badge 
+                        variant="outline" 
+                        className="border-purple-500/50 text-purple-400 text-xs"
+                      >
+                        {message.model}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-sm text-slate-200 truncate">{message.content}</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {message.timestamp.toLocaleTimeString()}
+                  </p>
+                </motion.div>
+              ))
+            )}
+          </div>
+        </div>
+      </motion.div>
     </>
   );
 };
