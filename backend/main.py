@@ -1665,14 +1665,14 @@ class ProjectBuilderReq(BaseModel):
     email : str
 
 STACK_SCRIPTS = {
-    'mern': 'alphamern.py',
-    'nextjs': 'alphanextjsprisma.py', 
-    'django-react': 'alphadjango.py',
-    'rust-solana-dapp': 'alpharust.py',
-    'vue-nuxt': 'alphavue.py',
-    'svelte-kit': 'alphasvelte.py',
-    'go-gin-stack': 'alphago.py',
-    't3-stack': 'alphat3.py',
+    'mern': 'alphamern.py', #done
+    'nextjs': 'alphanextjsprisma.py', #done
+    'django-react': 'alphadjango.py', #done
+    'rust-solana-dapp': 'alpharust.py', #done
+    'vue-nuxt': 'alphavue.py', #done
+    'svelte-kit': 'alphasvelte.py', #done
+    'go-gin-stack': 'alphagogin.py', #done
+    't3-stack': 'alphat3.py', #
     'flutter-firebase': 'alphaflutter.py'
 }
 
