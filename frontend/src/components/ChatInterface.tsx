@@ -22,6 +22,7 @@ import {
   getConversations,
   newConversation,
   deleteTheConversation,
+  getConversationWithId,
 } from "@/api/chatService";
 import {models} from "./ModelSelector"
 
@@ -552,19 +553,11 @@ const ChatInterface = () => {
     try {
       setCurrentConversationId(conversationId);
 
-      // Get token from localStorage
-      const token = localStorage.getItem("authToken") || "";
-
-      // Load messages for this conversation
-      const response = await fetch(
-        `http://localhost:8000/conversations/${conversationId}/messages`,
-        {}
-      );
+      const response = await getConversationWithId(conversationId);
 
       const messageTree = await response.json();
       setMessageTree(messageTree);
 
-      // Convert tree to flat message list for display
       const flatMessages = flattenMessageTree(messageTree);
       setMessages(flatMessages);
     } catch (error) {
@@ -579,10 +572,8 @@ const ChatInterface = () => {
 
       setCurrentConversationId(newConvo.conversation_id);
 
-      // const newConversation = await response.json()
-      // setCurrentConversationId(newConversation.conversation_id)
-      setMessages([]); // Clear current messages
-      await loadConversations(); // Refresh conversation list
+      setMessages([]);  
+      await loadConversations(); 
 
       toast({
         title: "New conversation created",

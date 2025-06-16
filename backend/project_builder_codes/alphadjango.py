@@ -811,14 +811,12 @@ def dfs_feedback_loop(
     clean_name = clean_name.replace('(', '').replace(')', '')
     clean_name = clean_name.replace('uploads will go here, e.g., ', '')
 
-    # Build the full path
     if is_top_level:
         full_path = os.path.join(project_name, clean_name)
     else:
         full_path = os.path.join(current_path, clean_name)
 
     if root.is_file:
-        # Initialize content as None
         actual_dependencies = dependency_analyzer.get_dependencies(full_path) if dependency_analyzer else []
         file_metadata = next((entry for entry in metadata_dict[project_name] if entry["path"] == full_path), None)
 
@@ -911,12 +909,10 @@ def generate_tree(resp: str, project_name: str = "root") -> TreeNode:
         indent = 0
         temp_line = line
 
-        # Count indentations based on common formatting
         while temp_line.startswith('│   ') or temp_line.startswith('    ') or temp_line.startswith('│ ') or temp_line.startswith('    '):
             temp_line = temp_line[4:]
             indent += 1
 
-        # Clean the line to get just the name
         name = line.strip()
         if '#' in name:
             name = name.split('#')[0].strip()
@@ -938,7 +934,6 @@ def generate_tree(resp: str, project_name: str = "root") -> TreeNode:
                 stack[-1].add_child(node)
             stack.append(node)
 
-    # Mark files vs directories
     def mark_files_and_dirs(node: TreeNode):
         if not node.children:
             node.is_file = True
@@ -1075,21 +1070,25 @@ def main():
         prompt = f.read()
         
     # prompt = sys.argv[1]
+
+    # output_dir = f"generated_projects/{output_dir}"
+
+    print("running django script...")
     refined_prompt = refine_prompt(prompt)
     project_name =extract_project_name(refined_prompt)
     print(project_name)
     response = generate_folder_struct(refined_prompt)
     print(response)
-    folder_tree = generate_tree(response, project_name)
+    folder_tree = generate_tree(response, output_dir)
     print(folder_tree.print_tree())
     dependency_analyzer = DepenedencyAnalyzer()
     json_file_name = "projects_metadata.json"
     metadata_dict = {project_name: []}
 
-    output_dir = os.path.dirname(json_file_name)
+    # output_dir = os.path.dirname(json_file_name)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-    dfs_tree_and_gen(root=folder_tree, refined_prompt=refined_prompt, tree_structure=response, project_name=project_name, current_path="", parent_context="", json_file_name=json_file_name, metadata_dict=metadata_dict, dependency_analyzer=dependency_analyzer)
+    dfs_tree_and_gen(root=folder_tree, refined_prompt=refined_prompt, tree_structure=response, project_name=output_dir, current_path="", parent_context="", json_file_name=json_file_name, metadata_dict=metadata_dict, dependency_analyzer=dependency_analyzer)
 
     dependency_analyzer.visualize_graph()
 

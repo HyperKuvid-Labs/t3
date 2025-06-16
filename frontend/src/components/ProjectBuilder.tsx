@@ -278,6 +278,8 @@ const AppBuilder = () => {
 
       Please generate a complete project structure and implementation using the specified tech stack with all the required features integrated.`
       };
+
+      console.log(appRequest);
   
       const response = await fetch("http://localhost:8000/run_project_builder", {
         method: "POST",

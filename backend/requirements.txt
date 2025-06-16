@@ -11,3 +11,4 @@ anthropic
 networkx
 matplotlib
 PyPDF2
+networkx

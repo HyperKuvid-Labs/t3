@@ -41,6 +41,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
+from email.mime.text import MIMEText
 
 oauth = OAuth()
 
@@ -1658,11 +1659,22 @@ async def delete_conversation(conversation_id: int, current_user: User = Depends
     except Exception as e:
         print(f"Error deleting conversation: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete conversation")
+    
+@app.get("/conversations/{conversation_id}/messages")
+async def get_messages(conversation_id: int, current_user: User = Depends(get_current_user)):
+    try:
+        conversation = await prisma.conversation.find_unique(
+            where={"id": conversation_id},
+            include={"messages": True}
+        )
 
-class ProjectBuilderReq(BaseModel):
-    stack_id : str
-    prompt : str
-    email : str
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        
+        return conversation.queries
+    except Exception as e:
+        print(f"Error getting messages: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get messages")
 
 STACK_SCRIPTS = {
     'mern': 'alphamern.py', #done
@@ -1672,7 +1684,7 @@ STACK_SCRIPTS = {
     'vue-nuxt': 'alphavue.py', #done
     'svelte-kit': 'alphasvelte.py', #done
     'go-gin-stack': 'alphagogin.py', #done
-    't3-stack': 'alphat3.py', #
+    't3-stack': 'alphat3.py', #done
     'flutter-firebase': 'alphaflutter.py'
 }
 
@@ -1703,16 +1715,21 @@ async def run_generation_script(script_path: str, output_dir: str, prompt: str):
         with open(prompt_file, 'w') as f:
             f.write(prompt)
         
-        process = await asyncio.create_subprocess_exec(
-            'python', script_path, output_dir, prompt_file,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=os.getcwd()
+        result = subprocess.run(
+            ['python', script_path, output_dir, prompt_file],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=os.getcwd(),
+            text=True  
         )
+
+        stdout = result.stdout
+        stderr = result.stderr
+        returncode = result.returncode
         
-        stdout, stderr = await process.communicate()
+        # stdout, stderr = await process.communicate()
         
-        if process.returncode != 0:
+        if returncode != 0:
             raise Exception(f"Script execution failed: {stderr.decode()}")
             
         os.remove(prompt_file)
@@ -1802,11 +1819,16 @@ def cleanup_files(project_dir: str, zip_path: str):
     except Exception as e:
         print(f"Cleanup failed: {e}")
 
+class ProjectBuilderReq(BaseModel):
+    stack_id : str
+    enhancedPrompt : str
+    email : str
+
 @app.post("/run_project_builder")
 async def project_builder(data : ProjectBuilderReq, background_tasks: BackgroundTasks = BackgroundTasks()):
     try:
         stack_id = data.stack_id
-        prompt = data.prompt
+        prompt = data.enhancedPrompt
         email = data.email
 
         user = await prisma.user.find_first(

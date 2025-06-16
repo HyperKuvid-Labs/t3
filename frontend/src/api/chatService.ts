@@ -220,3 +220,12 @@ export async function runProjectBuilder(prompt : string, email : string, stack_i
     throw new Error('Failed to develop the project');
   }
 }
+
+export async function getConversationWithId(conversationId : number) {
+  try {
+    const resp = await axios.get(`/conversations/${conversationId}/messages`);
+    return resp.data;
+  } catch (error) {
+    throw new Error('Failed to get conversation');
+  }
+}
