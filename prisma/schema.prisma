@@ -157,7 +157,8 @@ model Message {
   modelId Int?
   aiPrompt String?
   isDeleted Boolean @default(false)
-  deletedAt DateTime
+  deletedAt DateTime? // Made optional, as messages aren't "deleted" by default at creation
+  attachmentsJson String? // For storing file attachment metadata as JSON
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
