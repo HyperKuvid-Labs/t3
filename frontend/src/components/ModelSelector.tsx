@@ -1,5 +1,4 @@
-
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,20 +16,7 @@ interface Model {
   category: 'main' | 'local';
 }
 
-// enum ModelNameOllama {
-//   gemma3_27b
-//   llama3_3_70b
-//   deepseek_r1_70b
-//   phi4_14b
-// }
-
-// enum ModelNameOnline {
-//   gemini2_5_flash
-//   gemini2_5_pro
-//   deepseekv3
-//   claude3_5
-// }
-const models: Model[] = [
+export const models: Model[] = [
   {
     id: "gemini-2.5-pro",
     name: "Gemini 2.5 Pro",
@@ -86,8 +72,7 @@ const models: Model[] = [
     id: "llama-3.3",
     name: "LlaMA 3.3",
     provider: "Meta",
-    description:
-      "Meta's multilingual, instruction-tuned 70B model with top-tier performance.",
+    description: "Meta's multilingual, instruction-tuned 70B model with top-tier performance.",
     speed: "Medium",
     contextLength: "128K tokens",
     category: "local",
@@ -124,33 +109,50 @@ const ModelSelector = ({ selectedModel, onModelSelect }: ModelSelectorProps) => 
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  const selectedModelData = models.find(m => m.id === selectedModel);
-  const filteredModels = models.filter(model => 
-    model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    model.provider.toLowerCase().includes(searchTerm.toLowerCase())
+  // Memoize to prevent unnecessary re-renders
+  const selectedModelData = useMemo(() => 
+    models.find(m => m.id === selectedModel), 
+    [selectedModel]
   );
 
-  const mainModels = filteredModels.filter(m => m.category === 'main');
-  const localModels = filteredModels.filter(m => m.category === 'local');
+  const filteredModels = useMemo(() => 
+    models.filter(model =>
+      model.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      model.provider.toLowerCase().includes(searchTerm.toLowerCase())
+    ), 
+    [searchTerm]
+  );
 
-  // Load selection from localStorage on mount
-  useEffect(() => {
+  const mainModels = useMemo(() => 
+    filteredModels.filter(m => m.category === 'main'), 
+    [filteredModels]
+  );
+
+  const localModels = useMemo(() => 
+    filteredModels.filter(m => m.category === 'local'), 
+    [filteredModels]
+  );
+
+  // Use layoutEffect to prevent flickering on initial load
+  useLayoutEffect(() => {
     const saved = localStorage.getItem('gidvion-selected-model');
-    if (saved && models.find(m => m.id === saved)) {
+    if (saved && models.find(m => m.id === saved) && saved !== selectedModel) {
       onModelSelect(saved);
     }
-  }, [onModelSelect]);
+  }, []); // Remove onModelSelect from deps to prevent loops
 
   // Save selection to localStorage
   useEffect(() => {
-    localStorage.setItem('gidvion-selected-model', selectedModel);
+    if (selectedModel) {
+      localStorage.setItem('gidvion-selected-model', selectedModel);
+    }
   }, [selectedModel]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
-        dropdownRef.current && 
+        dropdownRef.current &&
         !dropdownRef.current.contains(event.target as Node) &&
         buttonRef.current &&
         !buttonRef.current.contains(event.target as Node)
@@ -163,20 +165,23 @@ const ModelSelector = ({ selectedModel, onModelSelect }: ModelSelectorProps) => 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleModelSelect = (modelId: string) => {
+  // Debounced selection to prevent rapid updates
+  const handleModelSelect = useCallback((modelId: string) => {
+    if (modelId === selectedModel) return; // Prevent unnecessary updates
+    
     onModelSelect(modelId);
     setIsOpen(false);
     setSearchTerm('');
-  };
+  }, [selectedModel, onModelSelect]);
 
-  const getSpeedIcon = (speed: string) => {
+  const getSpeedIcon = useCallback((speed: string) => {
     switch (speed) {
-      case 'Fast': return <Zap className="w-3 h-3 text-neon-green" />;
-      case 'Medium': return <Clock className="w-3 h-3 text-yellow-400" />;
-      case 'Slow': return <Database className="w-3 h-3 text-orange-400" />;
+      case 'Fast': return <Zap size={12} className="text-green-500" />;
+      case 'Medium': return <Clock size={12} className="text-yellow-500" />;
+      case 'Slow': return <Database size={12} className="text-red-500" />;
       default: return null;
     }
-  };
+  }, []);
 
   const ModelItem = ({ model }: { model: Model }) => {
     const isSelected = selectedModel === model.id;
@@ -184,13 +189,8 @@ const ModelSelector = ({ selectedModel, onModelSelect }: ModelSelectorProps) => 
 
     return (
       <motion.div
-        className={`relative p-4 rounded-xl cursor-pointer transition-all duration-200 border ${
-          isSelected
-            ? 'bg-zinc-800 border-neon-blue shadow-lg shadow-neon-blue/10'
-            : isHovered
-            ? 'bg-zinc-800/50 border-zinc-600'
-            : 'border-transparent hover:bg-zinc-800/30 hover:border-zinc-700'
-        }`}
+        key={`model-item-${model.id}`}
+        layoutId={`model-item-${model.id}`}
         onClick={() => handleModelSelect(model.id)}
         onMouseEnter={() => setHoveredModel(model.id)}
         onMouseLeave={() => setHoveredModel(null)}
@@ -199,62 +199,61 @@ const ModelSelector = ({ selectedModel, onModelSelect }: ModelSelectorProps) => 
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -10 }}
+        className={`p-3 rounded-lg cursor-pointer transition-all duration-200 border ${
+          isSelected
+            ? 'border-neon-blue bg-neon-blue/10 text-white'
+            : isHovered
+            ? 'border-zinc-600 bg-zinc-800/50'
+            : 'border-zinc-700 hover:border-zinc-600'
+        }`}
       >
         <div className="flex items-start justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold text-white tracking-tight">{model.name}</span>
-            {model.isNew && (
+          <div className="flex-1">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="font-medium text-sm text-white">{model.name}</h3>
+              {model.isNew && (
+                <Badge className="text-xs px-1.5 py-0.5 bg-neon-green/20 text-neon-green border-neon-green/50">
+                  {model.badge}
+                </Badge>
+              )}
+              {model.badge && !model.isNew && (
+                <Badge className="text-xs px-1.5 py-0.5 bg-zinc-700 text-zinc-300 border-zinc-600">
+                  {model.badge}
+                </Badge>
+              )}
+            </div>
+            {isSelected && (
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
-                className="flex items-center gap-1"
+                className="absolute top-2 right-2"
               >
-                <Sparkles className="w-3 h-3 text-neon-blue" />
-                <Badge variant="outline" className="text-xs border-neon-blue/30 text-neon-blue bg-neon-blue/10">
-                  {model.badge}
-                </Badge>
+                <Check size={16} className="text-neon-blue" />
               </motion.div>
             )}
-            {model.badge && !model.isNew && (
-              <Badge variant="outline" className="text-xs border-neon-purple/30 text-neon-purple bg-neon-purple/10">
-                {model.badge}
-              </Badge>
-            )}
           </div>
-          
-          {isSelected && (
-            <motion.div
-              initial={{ scale: 0, rotate: -90 }}
-              animate={{ scale: 1, rotate: 0 }}
-              className="text-neon-blue"
-            >
-              <Check className="w-4 h-4" />
-            </motion.div>
-          )}
         </div>
-
-        <p className="text-sm text-zinc-400 mb-3 leading-relaxed">{model.description}</p>
-
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 text-xs">
-            <div className="flex items-center gap-1">
-              {getSpeedIcon(model.speed)}
-              <span className="text-zinc-500">{model.speed}</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <Database className="w-3 h-3 text-zinc-500" />
-              <span className="text-zinc-500">{model.contextLength}</span>
-            </div>
+        
+        <p className="text-xs text-zinc-400 mb-3 leading-relaxed">
+          {model.description}
+        </p>
+        
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-1 text-zinc-400">
+            {getSpeedIcon(model.speed)}
+            <span>{model.speed}</span>
           </div>
-          <span className="text-xs text-zinc-500 font-medium">{model.provider}</span>
+          <div className="flex items-center gap-3 text-zinc-500">
+            <span>{model.contextLength}</span>
+            <span>{model.provider}</span>
+          </div>
         </div>
-
+        
         {isSelected && (
           <motion.div
-            className="absolute inset-0 rounded-xl border-2 border-neon-blue/50"
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.2 }}
+            initial={{ width: 0 }}
+            animate={{ width: '100%' }}
+            className="h-0.5 bg-neon-blue mt-2 rounded-full"
           />
         )}
       </motion.div>
@@ -273,24 +272,15 @@ const ModelSelector = ({ selectedModel, onModelSelect }: ModelSelectorProps) => 
             : 'border-zinc-700 hover:border-zinc-600 text-zinc-300 hover:bg-zinc-800/30'
         }`}
       >
-        <div className="flex items-center gap-3">
-          <motion.div
-            className="w-8 h-8 rounded-lg bg-gradient-to-br from-neon-blue/20 to-neon-purple/20 border border-neon-blue/30 flex items-center justify-center"
-            whileHover={{ scale: 1.1, rotate: 180 }}
-            transition={{ duration: 0.3 }}
-          >
-            <Cpu className="w-4 h-4 text-neon-blue" />
-          </motion.div>
-          <div className="text-left">
-            <div className="text-sm font-medium">{selectedModelData?.name || 'Select Model'}</div>
-            <div className="text-xs text-zinc-500">{selectedModelData?.provider}</div>
-          </div>
+        <div className="flex flex-col items-start">
+          <span className="text-sm">{selectedModelData?.name || 'Select Model'}</span>
+          <span className="text-xs text-zinc-500">{selectedModelData?.provider}</span>
         </div>
         <motion.div
           animate={{ rotate: isOpen ? 180 : 0 }}
           transition={{ duration: 0.2 }}
         >
-          <ChevronDown className="w-4 h-4" />
+          <ChevronDown size={16} />
         </motion.div>
       </Button>
 
@@ -298,14 +288,14 @@ const ModelSelector = ({ selectedModel, onModelSelect }: ModelSelectorProps) => 
         {isOpen && (
           <motion.div
             ref={dropdownRef}
-            className="absolute top-full mt-2 w-96 bg-zinc-900/95 backdrop-blur-xl border border-zinc-800 rounded-2xl shadow-2xl shadow-black/20 z-50 overflow-hidden"
             initial={{ opacity: 0, y: -10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
-            transition={{ duration: 0.15, ease: "easeOut" }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="absolute top-full left-0 right-0 mt-2 bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl z-50 max-h-96 overflow-hidden"
           >
             {/* Search Bar */}
-            <div className="p-4 border-b border-zinc-800">
+            <div className="p-4 border-b border-zinc-700">
               <input
                 type="text"
                 placeholder="Search models..."
@@ -316,67 +306,47 @@ const ModelSelector = ({ selectedModel, onModelSelect }: ModelSelectorProps) => 
               />
             </div>
 
-            <div className="max-h-[400px] overflow-y-auto">
+            <div className="max-h-80 overflow-y-auto">
               {/* Main Models Section */}
               {mainModels.length > 0 && (
                 <div className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <Sparkles className="w-4 h-4 text-neon-blue" />
-                    <h3 className="text-sm font-semibold text-zinc-300 tracking-wide">FEATURED MODELS</h3>
-                  </div>
+                  <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-3">
+                    FEATURED MODELS
+                  </h4>
                   <div className="space-y-2">
-                    <AnimatePresence>
-                      {mainModels.map((model, index) => (
-                        <motion.div
-                          key={model.id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ delay: index * 0.05 }}
-                        >
-                          <ModelItem model={model} />
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
+                    {mainModels.map((model) => (
+                      <ModelItem key={model.id} model={model} />
+                    ))}
                   </div>
                 </div>
               )}
 
               {/* Local Models Section */}
               {localModels.length > 0 && (
-                <div className="p-4 border-t border-zinc-800">
+                <div className="p-4 border-t border-zinc-700">
                   <div className="flex items-center gap-2 mb-3">
-                    <Zap className="w-4 h-4 text-neon-green" />
-                    <h3 className="text-sm font-semibold text-zinc-300 tracking-wide">LOCAL MODELS</h3>
-                    <Badge variant="outline" className="text-xs border-neon-green/30 text-neon-green bg-neon-green/10">
+                    <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">
+                      LOCAL MODELS
+                    </h4>
+                    <Badge className="text-xs px-2 py-0.5 bg-zinc-800 text-zinc-400 border-zinc-600">
                       Ollama
                     </Badge>
                   </div>
-                  <div className="text-xs text-zinc-500 mb-3 leading-relaxed">
+                  <p className="text-xs text-zinc-500 mb-3">
                     Faster inference, local deployment capable
-                  </div>
+                  </p>
                   <div className="space-y-2">
-                    <AnimatePresence>
-                      {localModels.map((model, index) => (
-                        <motion.div
-                          key={model.id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -20 }}
-                          transition={{ delay: index * 0.05 }}
-                        >
-                          <ModelItem model={model} />
-                        </motion.div>
-                      ))}
-                    </AnimatePresence>
+                    {localModels.map((model) => (
+                      <ModelItem key={model.id} model={model} />
+                    ))}
                   </div>
                 </div>
               )}
 
               {filteredModels.length === 0 && (
                 <div className="p-8 text-center">
-                  <div className="text-zinc-500 mb-2">No models found</div>
-                  <div className="text-xs text-zinc-600">Try adjusting your search terms</div>
+                  <div className="text-zinc-400 mb-2">No models found</div>
+                  <div className="text-xs text-zinc-500">Try adjusting your search terms</div>
                 </div>
               )}
             </div>

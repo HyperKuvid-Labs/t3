@@ -56,6 +56,12 @@ export interface ApiError {
   status?: number;
 }
 
+export interface ConversationResponse {
+  conversation_id: number;
+  room_name: string;
+  created_at: string;
+}
+
 const modelEndpoints = {
   'gemini-2.5-flash': '/query/gemini_flash',
   'gemini-2.5-pro': '/query/gemini_pro',
@@ -70,9 +76,10 @@ export type ModelType = keyof typeof modelEndpoints;
 export async function sendQueryToBackend(
   query: string, 
   emotion: string, 
-  model: ModelType,
+  model: string,
+  currentConvId : number,
   files? : File[],
-  webSearch? : boolean
+  webSearch? : boolean,
 ): Promise<ChatResponse> {
   // const formData = new FormData();
   // formData.append('query', query);
@@ -116,7 +123,8 @@ export async function sendQueryToBackend(
       {
         query: query.trim(),
         emotion: emotion || '',
-        webSearch : webSearch || false
+        webSearch : webSearch || false,
+        Conversation_id : currentConvId
       },
       {
         headers: {
@@ -166,5 +174,37 @@ export async function getCurrentUser() {
     return response.data;
   } catch (error) {
     throw new Error('Failed to get user information');
+  }
+}
+
+export async function getConversations() {
+  try {
+    const resp = await axios.get('/conversations');
+    return resp.data;
+  } catch (error) {
+    throw new Error('Failed to get conversations');
+  }
+}
+
+export async function newConversation(name : string, model : string) : Promise<ConversationResponse> {
+  try {
+    const resp = await axios.post('/conversations/new', {
+      name: name,
+      model: model
+    });
+    console.log(resp.data)
+    return resp.data;
+  } catch (error) {
+    throw new Error('Failed to create new conversation');
+  }
+}
+
+
+export async function deleteTheConversation(conversationId : number) {
+  try {
+    const resp = await axios.delete(`/conversations/${conversationId}`);
+    return resp.data;
+  } catch (error) {
+    throw new Error('Failed to delete conversation');
   }
 }

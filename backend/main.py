@@ -67,17 +67,23 @@ app = FastAPI()
 prisma = Prisma()
 
 security = HTTPBearer(
-    auto_error=False
+    auto_error=True
 )  # as we check for the oauth too, if given default after jwt verification it wont fallback to oauth, will raise the error directly
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:8080", 
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:8080",
+        "http://localhost:5173", 
+        "http://127.0.0.1:5173"   
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
-
 
 async def load_models_in_db():
     try:
@@ -190,7 +196,8 @@ class UserLoginModel(BaseModel):
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login-jwt")
+# oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login-jwt")
+# security = HTTPBearer(auto_error=False)
 
 app.add_middleware(SessionMiddleware, 
                    secret_key=SECRET_KEY,
@@ -198,7 +205,39 @@ app.add_middleware(SessionMiddleware,
                    max_age=None,
                    same_site="lax",
                    https_only=True)
+
+async def generate_ai_conversation_name(query: str, response: str) -> str:
+    prompt = f"""
+    Based on this conversation starter, generate a short, descriptive title (3-6 words max):
+    
+    User: {query[:200]}
+    AI: {response[:200]}
+    
+    Title should be concise and capture the main topic. Examples:
+    - "Python coding help"
+    - "Recipe for pasta"
+    - "Travel planning advice"
+    
+    Title:"""
+    
+    try:
+        model = await genai.GenerativeModel("gemini-1.5-flash-latest")
+        result = model.generate_content(prompt)
+        title = result.text.strip().replace('"', '').replace("Title:", "").strip()
+        return title[:50] 
+    except:
+        return await generate_conversation_name(query) 
+    
+def generate_conversation_name(first_message: str, max_length: int = 50) -> str:
+    cleaned = " ".join(first_message.strip().split())
+
+    if len(cleaned) <= max_length:
+        return cleaned
+    
+    return cleaned[:max_length-3] + "..."
+
 def gemini_flash_resp(query: str, emotion: str = "") -> str:
+    
     prompt = (
         f"You are an AI assistant responding to the following user query:\n\n"
         f'User\'s Query: "{query}"\n\n'
@@ -510,8 +549,10 @@ async def get_current_user_oauth(request: Request):
 
 
 async def get_current_user_flexible(
-    request: Request, credentials: HTTPAuthorizationCredentials = Depends(security)
+    request: Request, 
+    credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> User:
+    print(credentials.json())
     if credentials and credentials.credentials:
         try:
             return await get_current_user_jwt(credentials.credentials)
@@ -533,7 +574,6 @@ async def get_current_user_flexible(
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -564,6 +604,7 @@ class ConvoModel(BaseModel):
     query : str
     emotion : str = ""
     webSearch : bool = False
+    Conversation_id : int
 
 async def welcome(current_user: User = Depends(get_current_user_flexible)):
     return {
@@ -612,11 +653,9 @@ async def query_gemini_flash(
 ):
     response = gemini_flash_resp(query, emotion)
 
-    # Get model ID for Gemini Flash
     model_id = await get_model_by_name("online", "gemini2_5_flash")
     conversation_id = await get_default_conversation(current_user.id)
 
-    # Log query to database
     query_resp = await prisma.queryresp.create(
         data={
             "query": query,
@@ -643,9 +682,24 @@ async def query_gemini_pro(
     query = data.query
     emotion = data.emotion
     webSearch = data.webSearch
+    conversation_id = data.Conversation_id
 
     search_context = ""
 
+    conversation = await prisma.conversation.find_first(
+        where={
+            "id": conversation_id,
+            "users": {"some": {"id": current_user.id}}
+        }
+    )
+    
+    if not conversation:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found or access denied"
+        )
+
+    # search_context = ""
     try:
         if webSearch:
             search_results = await google_web_search(query, GOOGLE_API_KEY, GOOGLE_SEARCH_ENGINE_ID)
@@ -656,11 +710,19 @@ async def query_gemini_pro(
     except Exception as e:
         print(e)
 
-
     response = gemini_pro_resp(query, emotion, search_context)
+    model_id = await get_model_by_name("online", "gemini2_5_pro")   
+
+    existing_queries = await prisma.queryresp.count(
+        where={"conversationId": conversation_id}
+    )
     
-    model_id = await get_model_by_name("online", "gemini2_5_pro")
-    conversation_id = await get_default_conversation(current_user.id)
+    if existing_queries == 0:
+        new_name = await generate_ai_conversation_name(query=query, response=response)
+        await prisma.conversation.update(
+            where={"id": conversation_id},
+            data={"roomName": new_name}
+        )
 
     query_resp = await prisma.queryresp.create(
         data={
@@ -672,12 +734,14 @@ async def query_gemini_pro(
         }
     )
 
+
     return {
         "query": query,
         "response": response,
         "model": "gemini_pro",
         "user": current_user.email,
         "query_id": query_resp.id,
+        "conversation_id": conversation_id,
     }
 
 
@@ -943,15 +1007,15 @@ async def get_conversation_history(conversation_id : int, current_user = Depends
 
     return history
 
-@app.get("/conversations")
-async def get_conversation_user(current_user = Depends(get_current_user)):
-    conversations = await prisma.conversation.find_many(
-        where = {
-            "userId" : current_user.id
-        }
-    )
+# @app.get("/conversations")
+# async def get_conversation_user(current_user = Depends(get_current_user)):
+#     conversations = await prisma.conversation.find_many(
+#         where = {
+#             "userId" : current_user.id
+#         }
+#     )
 
-    return conversations
+#     return conversations
 
 @app.post("/process-file")
 async def process_file(file: UploadFile = File(...), file_type: str = "pdf"):
@@ -1488,27 +1552,105 @@ async def invite_to_conversation_via_mail(
         return JSONResponse(
             content={"message": "conversation not found"}, status_code=404
         )
+    
+async def get_default_conversation(user_id: int) -> int:
+    conversation = await prisma.conversation.find_first(
+        where={"users": {"some": {"id": user_id}}, "roomName": "default"}
+    )
 
+    if not conversation:
+        conversation = await prisma.conversation.create(
+            data={"roomName": "default", "users": {"connect": {"id": user_id}}}
+        )
+    return conversation.id
 
-# for ref:
-# model Conversation {
-#   id        Int      @id @default(autoincrement())
-#   type ConversationType @default(team)
-#   aiEnabled Boolean @default(false)
-#   aiModel String?
-#   lastMessageAt DateTime @default(now())
+class ConversationCreateModel(BaseModel):
+    name: str
+    model: str
 
-#   users User[] @relation("UserConversations")
-#   currentUsers User[] @relation("CurrentConversation")
-#   roomName String
-#   createdAt DateTime @default(now())
-#   updatedAt DateTime @default(now())
-#   queries QueryResp[] @relation("ConversationQueries")
-#   messages Message[]
+@app.get("/conversations")
+async def get_conversations(current_user: User = Depends(get_current_user)):
+    try:
+        conversations = await prisma.conversation.find_many(
+            where={
+                "users": {
+                    "some": {
+                        "id": current_user.id
+                    }
+                }
+            }
+        )
+        
+        # Transform the response to match your frontend expectations
+        formatted_conversations = []
+        for conv in conversations:
+            formatted_conversations.append({
+                "id": conv.id,
+                "room_name": conv.roomName,
+                "last_message_at": conv.lastMessageAt.isoformat() if conv.lastMessageAt else None,
+                "ai_model": conv.aiModel,
+                "type": conv.type,
+                "aiEnabled": conv.aiEnabled,
+                "created_at": conv.createdAt.isoformat() if conv.createdAt else None
+            })
+        
+        return formatted_conversations
+        
+    except Exception as e:
+        print(f"Error fetching conversations: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch conversations: {str(e)}"
+        )
 
-#   invitations ConversationInvitation[]
+@app.post("/conversations/new")
+async def create_new_conversation(
+    data: ConversationCreateModel, 
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        conversation = await prisma.conversation.create(
+            data={
+                "roomName": data.name,
+                "type": "ai_enabled",
+                "aiEnabled": True,
+                "aiModel": data.model,
+                "users": {"connect": {"id": current_user.id}}
+            }
+        )
+        
+        await prisma.user.update(
+            where={"id": current_user.id},
+            data={"currentCoversationId": conversation.id}  # Note: Fix typo "Coversation" -> "Conversation"
+        )
 
-#   @@index([type])
-#   @@index([aiEnabled])
-#   @@index([lastMessageAt])
-# }
+        return {
+            "conversation_id": conversation.id,
+            "room_name": conversation.roomName,
+            "created_at": conversation.createdAt.isoformat() if conversation.createdAt else None
+        }
+    except Exception as e:
+        print(f"Error creating conversation: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to create conversation: {str(e)}"
+        )
+
+@app.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: int, current_user: User = Depends(get_current_user)):
+    try:
+        conversation = await prisma.conversation.find_unique(
+            where={"id": conversation_id}
+        )
+
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        await prisma.conversation.delete(where={"id": conversation_id})
+
+        return {"message": "Conversation deleted successfully"}
+    except Exception as e:
+        print(f"Error deleting conversation: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete conversation")
+    
+
