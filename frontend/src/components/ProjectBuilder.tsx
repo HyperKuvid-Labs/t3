@@ -14,6 +14,7 @@ import {
   Rocket, CheckCircle, AlertCircle, Send, Star
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { runProjectBuilder } from '@/api/chatService';
 
 gsap.registerPlugin(useGSAP);
 
@@ -23,8 +24,8 @@ interface TechStack {
   description: string;
   icon: React.ComponentType<any>;
   technologies: string[];
-  category: 'fullstack' | 'frontend' | 'backend' | 'mobile';
-  difficulty: 'beginner' | 'intermediate' | 'advanced';
+  category: 'fullstack' | 'frontend' | 'backend' | 'mobile' | 'blockchain';
+  difficulty: 'beginner' | 'intermediate' | 'advanced' | 'expert';
   estimatedTime: string;
 }
 
@@ -66,15 +67,15 @@ const techStacks: TechStack[] = [
     difficulty: 'advanced',
     estimatedTime: '40-50 mins'
   },
-  {
-    id: 'react-vite',
-    name: 'React + Vite',
-    description: 'Lightning-fast React development with modern tooling',
-    icon: Zap,
-    technologies: ['React 18', 'Vite', 'TypeScript', 'Tailwind CSS', 'Framer Motion'],
-    category: 'frontend',
-    difficulty: 'beginner',
-    estimatedTime: '20-30 mins'
+   {
+    id: 'rust-solana-dapp',
+    name: 'Solana dApp (Rust)',
+    description: 'Decentralized application on Solana blockchain using Rust',
+    icon: Globe,
+    technologies: ['Rust', 'Anchor Framework', 'Solana', 'Web3.js', 'Phantom Wallet'],
+    category: 'blockchain',
+    difficulty: 'expert',
+    estimatedTime: '60-90 mins'
   },
   {
     id: 'vue-nuxt',
@@ -95,23 +96,96 @@ const techStacks: TechStack[] = [
     category: 'fullstack',
     difficulty: 'intermediate',
     estimatedTime: '25-35 mins'
+  },
+  {
+    id: 'go-gin-stack',
+    name: 'Go + Gin Framework',
+    description: 'High-performance REST API development with Go and Gin',
+    icon: Zap,
+    technologies: ['Go', 'Gin Framework', 'PostgreSQL', 'Redis', 'Docker'],
+    category: 'backend',
+    difficulty: 'intermediate',
+    estimatedTime: '35-45 mins'
+  },
+  {
+    id: 't3-stack',
+    name: 'T3 Stack',
+    description: 'Type-safe full-stack development with Next.js, tRPC, and Prisma',
+    icon: Database,
+    technologies: ['Next.js', 'TypeScript', 'tRPC', 'Prisma', 'Tailwind CSS'],
+    category: 'fullstack',
+    difficulty: 'advanced',
+    estimatedTime: '50-70 mins'
+  },
+  {
+    id: 'flutter-firebase',
+    name: 'Flutter + Firebase',
+    description: 'Cross-platform mobile development with Google\'s backend services',
+    icon: Sparkles,
+    technologies: ['Flutter', 'Firebase', 'Cloud Firestore', 'FCM', 'Firebase Auth'],
+    category: 'mobile',
+    difficulty: 'intermediate',
+    estimatedTime: '40-60 mins'
   }
 ];
 
 const popularFeatures = [
+  // Core Backend Features
   'Authentication & Authorization',
-  'Database Integration',
+  'Database Integration', 
   'API Development',
+  'Microservices Architecture',
+  
+  // Modern Web Features
   'Real-time Features',
+  'GraphQL Integration',
+  'Server-Side Rendering (SSR)',
+  'Static Site Generation (SSG)',
+  
+  // Blockchain & Web3
+  'Smart Contract Integration',
+  'Wallet Connection',
+  'Cryptocurrency Payments',
+  'NFT Marketplace Features',
+  
+  // Performance & Scalability
+  'Caching Strategies',
+  'Load Balancing',
+  'CDN Integration',
+  'WebAssembly (WASM) Support',
+  
+  // Developer Experience
+  'Type Safety (TypeScript)',
+  'Code Generation',
+  'Hot Module Replacement',
+  'Developer Tools Integration',
+  
+  // Traditional Features (Updated)
   'File Upload/Download',
-  'Email Integration',
+  'Email Integration', 
   'Payment Processing',
   'Admin Dashboard',
+  
+  // Modern Frontend
+  'Progressive Web App (PWA)',
   'Mobile Responsive',
-  'SEO Optimization',
+  'Dark Mode Support',
+  'Internationalization (i18n)',
+  
+  // DevOps & Quality
+  'Container Orchestration',
+  'CI/CD Pipelines',
+  'Monitoring & Analytics',
   'Testing Setup',
-  'Deployment Config'
+  'Security Scanning',
+  
+  // Cloud & Deployment
+  'Serverless Functions',
+  'Edge Computing',
+  'Multi-cloud Deployment',
+  'Auto-scaling Configuration'
 ];
+
 
 const AppBuilder = () => {
   const [selectedStack, setSelectedStack] = useState<TechStack | null>(null);
@@ -188,13 +262,24 @@ const AppBuilder = () => {
   
     try {
       const appRequest = {
-        stackId: selectedStack.id,
-        prompt: prompt.trim(),
         email: email.trim(),
-        features: selectedFeatures
+        stack_id : selectedStack.id,
+        enhancedPrompt: `Project Requirements:
+      ${prompt.trim()}
+
+      Tech Stack: ${selectedStack.name}
+      Technologies: ${selectedStack.technologies.join(', ')}
+      Category: ${selectedStack.category}
+      Difficulty: ${selectedStack.difficulty}
+      Estimated Time: ${selectedStack.estimatedTime}
+
+      Required Features:
+      ${selectedFeatures.map(feature => `- ${feature}`).join('\n')}
+
+      Please generate a complete project structure and implementation using the specified tech stack with all the required features integrated.`
       };
   
-      const response = await fetch("http://localhost:5000/run-task", {
+      const response = await fetch("http://localhost:8000/run_project_builder", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"
@@ -202,18 +287,17 @@ const AppBuilder = () => {
         body: JSON.stringify(appRequest)
       });
   
-      const result = await response.json();
+      // const result = await runProjectBuilder(appRequest.enhancedPrompt, appRequest.email, appRequest.stack_id);
   
       if (!response.ok) {
-        throw new Error(result.detail || "Backend error");
+        throw new Error("Backend error, our bad!!");
       }
   
       toast({
         title: "App Generation Started! 🚀",
-        description: result.output || `Your ${selectedStack.name} app is being generated.`,
+        description: `Your ${selectedStack.name} app is being generated.`,
       });
   
-      // ✅ Reset form after success
       setSelectedStack(null);
       setPrompt('');
       setEmail('');
@@ -278,7 +362,7 @@ const AppBuilder = () => {
             <h1 className="text-5xl md:text-6xl font-bold text-white tracking-tight">
               Build Your Dream App
               <span className="block text-3xl md:text-4xl bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent mt-2">
-                In Minutes, Not Months
+                Ship in Minutes, Not Months (Debugging Speed May Vary)
               </span>
             </h1>
             
@@ -295,7 +379,7 @@ const AppBuilder = () => {
             >
               <AlertCircle className="w-5 h-5 text-amber-400" />
               <span className="text-amber-300 font-medium">
-                **This service is currently in beta and generation takes approximately 40 minutes**
+                <b>Beta service: ~40 minute generation time with occasional import tweaks needed - enhanced version with faster, cleaner code coming soon!</b>
               </span>
             </motion.div>
           </div>
@@ -518,7 +602,7 @@ const AppBuilder = () => {
                         Delivery Email
                       </CardTitle>
                       <CardDescription className="text-slate-400">
-                        We'll send your generated app as a ZIP file to this email
+                        We’ll zip up your generated app and send it to your inbox. Please enter the email you signed up with — that’s all we need from you. Cheers! 🙂
                       </CardDescription>
                     </CardHeader>
                     <CardContent>

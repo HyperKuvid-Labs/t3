@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, UploadFile, File
+from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, UploadFile, File, BackgroundTasks
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
@@ -35,6 +35,12 @@ import anthropic
 import io
 import PyPDF2
 from googleapiclient.discovery import build
+import shutil
+import zipfile
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 oauth = OAuth()
 
@@ -1652,5 +1658,187 @@ async def delete_conversation(conversation_id: int, current_user: User = Depends
     except Exception as e:
         print(f"Error deleting conversation: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete conversation")
+
+class ProjectBuilderReq(BaseModel):
+    stack_id : str
+    prompt : str
+    email : str
+
+STACK_SCRIPTS = {
+    'mern': 'alphamern.py',
+    'nextjs': 'alphanextjsprisma.py', 
+    'django-react': 'alphadjango.py',
+    'rust-solana-dapp': 'alpharust.py',
+    'vue-nuxt': 'alphavue.py',
+    'svelte-kit': 'alphasvelte.py',
+    'go-gin-stack': 'alphago.py',
+    't3-stack': 'alphat3.py',
+    'flutter-firebase': 'alphaflutter.py'
+}
+
+async def process_project_generation(stack_id: str, project_id: str, email: str, enhanced_prompt: str):
+    try:
+        project_dir = f"generated_projects/{project_id}"
+        os.makedirs(project_dir, exist_ok=True)
+        
+        script_name = STACK_SCRIPTS[stack_id]
+        script_path = f"project_builder_codes/{script_name}"
+        
+        await run_generation_script(script_path, project_dir, enhanced_prompt)
+        
+        zip_path = f"{project_dir}.zip"
+        create_zip_file(project_dir, zip_path)
+        
+        await send_project_email(email, zip_path, project_id, stack_id)
+        
+        cleanup_files(project_dir, zip_path)
+        
+    except Exception as e:
+        await send_error_email(email, project_id, str(e))
+        print(f"Error in project generation: {e}")
+
+async def run_generation_script(script_path: str, output_dir: str, prompt: str):
+    try:
+        prompt_file = f"{output_dir}/prompt.txt"
+        with open(prompt_file, 'w') as f:
+            f.write(prompt)
+        
+        process = await asyncio.create_subprocess_exec(
+            'python', script_path, output_dir, prompt_file,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=os.getcwd()
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            raise Exception(f"Script execution failed: {stderr.decode()}")
+            
+        os.remove(prompt_file)
+        
+    except Exception as e:
+        raise Exception(f"Failed to run generation script: {str(e)}")
+
+def create_zip_file(source_dir: str, zip_path: str):
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+        for root, dirs, files in os.walk(source_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, source_dir)
+                zipf.write(file_path, arcname)
+
+async def send_project_email(email: str, zip_path: str, project_id: str, stack_id: str):
+    try:
+        smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        sender_email = os.getenv('SENDER_EMAIL')
+        sender_password = os.getenv('SENDER_PASSWORD')
+        
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = email
+        msg['Subject'] = f"Your {stack_id.upper()} Project is Ready! 🚀"
+        
+        body = f"""
+        Hi there! 👋
+
+        Your {stack_id.upper()} project has been generated successfully!
+
+        Project ID: {project_id}
+        Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+        Please find your complete project attached as a ZIP file.
+
+        What's included:
+        ✅ Complete project structure
+        ✅ All necessary configuration files
+        ✅ Dependencies and requirements
+        ✅ README with setup instructions
+
+        Note: This is a beta service - minor import adjustments may be needed.
+
+        Happy coding! 🎉
+
+        Best regards,
+        Your Project Generator Team
+        """
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        with open(zip_path, "rb") as attachment:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(attachment.read())
+            
+        encoders.encode_base64(part)
+        part.add_header(
+            'Content-Disposition',
+            f'attachment; filename= {project_id}.zip'
+        )
+        msg.attach(part)
+        
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        text = msg.as_string()
+        server.sendmail(sender_email, email, text)
+        server.quit()
+        
+    except Exception as e:
+        raise Exception(f"Failed to send email: {str(e)}")
+
+async def send_error_email(email: str, project_id: str, error_message: str):
+    try:
+        pass
+    except Exception as e:
+        print(f"Failed to send error email: {e}")
+
+def cleanup_files(project_dir: str, zip_path: str):
+    try:
+        if os.path.exists(project_dir):
+            shutil.rmtree(project_dir)
+        if os.path.exists(zip_path):
+            os.remove(zip_path)
+    except Exception as e:
+        print(f"Cleanup failed: {e}")
+
+@app.post("/run_project_builder")
+async def project_builder(data : ProjectBuilderReq, background_tasks: BackgroundTasks = BackgroundTasks()):
+    try:
+        stack_id = data.stack_id
+        prompt = data.prompt
+        email = data.email
+
+        user = await prisma.user.find_first(
+            where={
+                "email": email
+            }
+        )
+
+        if not user:
+            raise HTTPException(status_code=400, detail="User not found. Please sign up first.")
+
+        if stack_id not in STACK_SCRIPTS:
+            raise HTTPException(status_code=400, detail=f"Will be adding the scripts for this stack soon...")
+        
+        project_id = f"{stack_id}_{uuid.uuid4().hex[:8]}_{int(datetime.now().timestamp())}"
     
+        background_tasks.add_task(
+            process_project_generation,
+            stack_id=stack_id,
+            project_id=project_id,
+            email=email,
+            enhanced_prompt=prompt
+        )
+        
+        return {
+            "message": "Project generation started successfully",
+            "project_id": project_id,
+            "estimated_time": "~40 minutes",
+            "status": "processing"
+        }
+    except Exception as e:
+        print(f"Error generating project: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate project")
+
 

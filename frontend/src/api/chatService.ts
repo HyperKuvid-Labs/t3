@@ -208,3 +208,15 @@ export async function deleteTheConversation(conversationId : number) {
     throw new Error('Failed to delete conversation');
   }
 }
+
+export async function runProjectBuilder(prompt : string, email : string, stack_id : string) {
+  try {
+    const resp = await axios.post('/run_project_builder', {
+      stack_id: stack_id,
+      prompt: prompt,
+      email: email
+    })
+  } catch (error) {
+    throw new Error('Failed to develop the project');
+  }
+}
