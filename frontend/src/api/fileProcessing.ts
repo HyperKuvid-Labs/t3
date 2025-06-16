@@ -220,7 +220,15 @@ export class FileProcessor {
         const notesXml = await zipContent.files[notesFile].async('text');
         const notesMatches = notesXml.match(/<a:t[^>]*>([^<]*)<\/a:t>/g) || [];
         const notesText = notesMatches
-          .map(match => match.replace(/<[^>]*>/g, ''))
+          .map(match => {
+            let sanitized = match;
+            let previous;
+            do {
+              previous = sanitized;
+              sanitized = sanitized.replace(/<[^>]*>/g, '');
+            } while (sanitized !== previous);
+            return sanitized;
+          })
           .filter(text => text.trim().length > 0)
           .join(' ');
         
