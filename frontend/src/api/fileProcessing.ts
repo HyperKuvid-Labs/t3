@@ -2,6 +2,7 @@ import { createWorker } from 'tesseract.js';
 import * as XLSX from 'xlsx';
 import mammoth from 'mammoth';
 import JSZip from 'jszip';
+import sanitizeHtml from 'sanitize-html';
 
 export interface ProcessedFile {
   filename: string;
@@ -244,10 +245,12 @@ export class FileProcessor {
   private static async processHTML(file: File): Promise<{ content: string; metadata: any }> {
     const htmlContent = await file.text();
     
-    const textContent = htmlContent
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]*>/g, ' ')
+    const sanitizedContent = sanitizeHtml(htmlContent, {
+      allowedTags: [],
+      allowedAttributes: {}
+    });
+
+    const textContent = sanitizedContent
       .replace(/\s+/g, ' ')
       .trim();
 
