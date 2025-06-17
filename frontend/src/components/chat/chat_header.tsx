@@ -59,7 +59,7 @@ const ChatHeader: React.FC<ChatHeaderProps> = ({
 }) => {
   return (
     <motion.div
-      className="chat-header fixed z-50 border-b border-slate-800/50 backdrop-blur-xl"
+      className="chat-header fixed top-20 left-0 right-0 z-50 border-b border-slate-800/50 backdrop-blur-xl"
       style={{
         opacity: headerOpacity,
         backdropFilter: `blur(${headerBlur}px)`,

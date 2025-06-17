@@ -1,8 +1,7 @@
-// ConversationSidebar.tsx
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Plus, MessageSquare, Trash2, ChevronLeft, ChevronRight, Bot, User } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Bot, User, Clock, Search, Filter } from 'lucide-react';
 
 interface Conversation {
   id: number;
@@ -14,25 +13,26 @@ interface Conversation {
   aiEnabled: boolean;
 }
 
-interface ConversationSidebarProps {
+interface HistoryViewProps {
   conversations: Conversation[];
   currentConversationId: number | null;
   onCreateNew: () => void;
   onSwitchConversation: (id: number) => void;
   onDeleteConversation: (id: number) => void;
-  isCollapsed: boolean;
-  onToggleCollapse: () => void;
+  onTabChange?: (tab: string) => void; // New prop to handle tab switching
 }
 
-const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
+const HistoryView: React.FC<HistoryViewProps> = ({
   conversations,
   currentConversationId,
   onCreateNew,
   onSwitchConversation,
   onDeleteConversation,
-  isCollapsed,
-  onToggleCollapse
+  onTabChange
 }) => {
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [filterModel, setFilterModel] = React.useState<string>('all');
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
     const now = new Date();
@@ -47,278 +47,272 @@ const ConversationSidebar: React.FC<ConversationSidebarProps> = ({
     }
   };
 
-  const sidebarVariants = {
-    expanded: { width: 320 },
-    collapsed: { width: 64 }
+  const handleConversationClick = (conversationId: number) => {
+    onSwitchConversation(conversationId);
+    onTabChange('chat'); // Switch to chat tab after selecting conversation
   };
 
-  const contentVariants = {
-    expanded: { opacity: 1, x: 0 },
-    collapsed: { opacity: 0, x: -20 }
-  };
+  // Filter conversations based on search and model filter
+  const filteredConversations = conversations.filter(conversation => {
+    const matchesSearch = conversation.room_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         conversation.last_message?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         conversation.ai_model.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesModel = filterModel === 'all' || conversation.ai_model === filterModel;
+    
+    return matchesSearch && matchesModel;
+  });
+
+  // Get unique models for filter
+  const uniqueModels = [...new Set(conversations.map(c => c.ai_model))];
+
+  // Group conversations by date
+  const groupedConversations = filteredConversations.reduce((groups, conversation) => {
+    const date = new Date(conversation.last_message_at);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    let groupKey;
+    if (date.toDateString() === today.toDateString()) {
+      groupKey = 'Today';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      groupKey = 'Yesterday';
+    } else if (date > new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)) {
+      groupKey = 'This Week';
+    } else {
+      groupKey = 'Older';
+    }
+    
+    if (!groups[groupKey]) {
+      groups[groupKey] = [];
+    }
+    groups[groupKey].push(conversation);
+    return groups;
+  }, {} as Record<string, Conversation[]>);
 
   return (
-    <motion.div
-      initial={false}
-      animate={isCollapsed ? "collapsed" : "expanded"}
-      variants={sidebarVariants}
-      transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-      className="bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-950 border-r border-slate-200/60 dark:border-slate-700/60 flex flex-col relative backdrop-blur-sm"
-    >
-      {/* Decorative gradient overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-transparent to-purple-50/20 dark:from-blue-950/20 dark:via-transparent dark:to-purple-950/10 pointer-events-none" />
-      
-      {/* Collapse Toggle Button */}
-      <motion.div
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.95 }}
-        className="absolute -right-3 top-6 z-20"
+    <div className="h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 overflow-hidden">
+      {/* Header */}
+      <motion.div 
+        className="p-6 border-b border-zinc-700/50 bg-zinc-800/50 backdrop-blur-sm"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
       >
-        <Button 
-          onClick={onToggleCollapse} 
-          size="sm" 
-          variant="outline" 
-          className="w-7 h-7 rounded-full border-2 border-slate-200 dark:border-slate-700 bg-white/90 dark:bg-slate-800/90 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300 hover:border-blue-300 dark:hover:border-blue-600"
-        >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-gradient-to-r from-neon-blue/20 to-neon-purple/20 rounded-lg">
+              <MessageSquare className="w-5 h-5 text-neon-blue" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold text-white">Conversation History</h2>
+              <p className="text-sm text-zinc-400">
+                {conversations.length} conversation{conversations.length !== 1 ? 's' : ''} • {filteredConversations.length} shown
+              </p>
+            </div>
+          </div>
+
+          {/* New Chat Button */}
           <motion.div
-            animate={{ rotate: isCollapsed ? 0 : 180 }}
-            transition={{ duration: 0.3 }}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
           >
-            <ChevronRight size={14} className="text-slate-600 dark:text-slate-300" />
+            <Button 
+              onClick={() => {
+                onCreateNew();
+                onTabChange('chat');
+              }}
+              className="flex items-center gap-3 bg-gradient-to-r from-neon-blue to-neon-purple hover:from-neon-blue/80 hover:to-neon-purple/80 text-white shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl py-2.5 px-6"
+            >
+              <Plus size={16} />
+              <span className="font-medium">New Chat</span>
+            </Button>
           </motion.div>
-        </Button>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="flex items-center gap-4">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-zinc-400" />
+            <input
+              type="text"
+              placeholder="Search conversations..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 bg-zinc-700/50 border border-zinc-600 rounded-lg text-white placeholder-zinc-400 focus:outline-none focus:border-neon-blue/50 focus:ring-1 focus:ring-neon-blue/20"
+            />
+          </div>
+
+          {/* Model Filter */}
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-zinc-400" />
+            <select
+              value={filterModel}
+              onChange={(e) => setFilterModel(e.target.value)}
+              className="bg-zinc-700/50 border border-zinc-600 rounded-lg text-white text-sm px-3 py-2 focus:outline-none focus:border-neon-blue/50"
+            >
+              <option value="all">All Models</option>
+              {uniqueModels.map(model => (
+                <option key={model} value={model}>{model}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </motion.div>
 
-      {/* Header Section */}
-      <div className="p-4 border-b border-slate-200/60 dark:border-slate-700/60 relative z-10">
-        <AnimatePresence mode="wait">
-          {!isCollapsed ? (
-            <motion.div
-              key="expanded-header"
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div className="mb-3">
-                <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-200 mb-1">
-                  Conversations
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {conversations.length} chat{conversations.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-              <motion.div
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                <Button 
-                  onClick={onCreateNew}
-                  className="w-full flex items-center gap-3 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 rounded-xl py-2.5"
-                >
-                  <Plus size={16} />
-                  <span className="font-medium">New Chat</span>
-                </Button>
-              </motion.div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="collapsed-header"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
-              transition={{ duration: 0.3 }}
-              className="flex justify-center"
-            >
-              <motion.div
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.9 }}
-              >
-                <Button 
-                  onClick={onCreateNew}
-                  size="sm" 
-                  className="w-10 h-10 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
-                >
-                  <Plus size={18} />
-                </Button>
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-      
       {/* Conversations List */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent relative z-10">
-        <div className="p-2 space-y-1">
-          <AnimatePresence>
-            {conversations.map((conversation, index) => (
-              <motion.div 
-                key={conversation.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, x: -100 }}
-                transition={{ 
-                  duration: 0.3, 
-                  delay: index * 0.05,
-                  ease: [0.4, 0, 0.2, 1]
-                }}
-                whileHover={{ 
-                  scale: 1.02,
-                  transition: { duration: 0.2 }
-                }}
-                whileTap={{ scale: 0.98 }}
-                className={`relative rounded-xl cursor-pointer group transition-all duration-300 ${
-                  currentConversationId === conversation.id 
-                    ? 'bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-950/50 dark:to-blue-900/30 shadow-md border border-blue-200/50 dark:border-blue-700/50' 
-                    : 'hover:bg-white/60 dark:hover:bg-slate-800/60 hover:shadow-sm'
-                }`}
-                onClick={() => onSwitchConversation(conversation.id)}
-              >
-                {/* Active indicator */}
-                {currentConversationId === conversation.id && (
-                  <motion.div
-                    layoutId="activeIndicator"
-                    className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-gradient-to-b from-blue-500 to-blue-600 rounded-r-full"
-                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                  />
-                )}
-
-                <div className="p-3">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-2">
-                        <div className={`p-1.5 rounded-lg ${
-                          conversation.aiEnabled 
-                            ? 'bg-gradient-to-br from-purple-100 to-blue-100 dark:from-purple-900/30 dark:to-blue-900/30' 
-                            : 'bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700'
-                        }`}>
-                          {conversation.aiEnabled ? (
-                            <Bot size={12} className="text-purple-600 dark:text-purple-400" />
-                          ) : (
-                            <User size={12} className="text-slate-600 dark:text-slate-400" />
-                          )}
-                        </div>
-                        
-                        <AnimatePresence>
-                          {!isCollapsed && (
-                            <motion.div
-                              variants={contentVariants}
-                              initial="collapsed"
-                              animate="expanded"
-                              exit="collapsed"
-                              transition={{ duration: 0.2 }}
-                              className="flex-1 min-w-0"
-                            >
-                              <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
-                                {conversation.room_name}
-                              </h4>
-                              {conversation.ai_model && (
-                                <span className="text-xs text-blue-600 dark:text-blue-400 font-medium">
-                                  {conversation.ai_model}
-                                </span>
-                              )}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                      
-                      <AnimatePresence>
-                        {!isCollapsed && conversation.last_message && (
-                          <motion.p 
-                            variants={contentVariants}
-                            initial="collapsed"
-                            animate="expanded"
-                            exit="collapsed"
-                            transition={{ duration: 0.2, delay: 0.05 }}
-                            className="text-xs text-slate-600 dark:text-slate-400 truncate mb-2 leading-relaxed"
-                          >
-                            {conversation.last_message}
-                          </motion.p>
-                        )}
-                      </AnimatePresence>
-                      
-                      <AnimatePresence>
-                        {!isCollapsed && (
-                          <motion.div
-                            variants={contentVariants}
-                            initial="collapsed"
-                            animate="expanded"
-                            exit="collapsed"
-                            transition={{ duration: 0.2, delay: 0.1 }}
-                            className="flex items-center justify-between"
-                          >
-                            <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                              {formatDate(conversation.last_message_at)}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              {conversation.type && (
-                                <span className="px-2 py-0.5 text-xs bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-full">
-                                  {conversation.type}
-                                </span>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                    
-                    <AnimatePresence>
-                      {!isCollapsed && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 0, scale: 1 }}
-                          whileHover={{ opacity: 1, scale: 1.1 }}
-                          exit={{ opacity: 0, scale: 0.8 }}
-                          transition={{ duration: 0.2 }}
-                          className="group-hover:opacity-100 transition-opacity duration-200"
-                        >
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteConversation(conversation.id);
-                            }}
-                            className="h-7 w-7 p-0 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 transition-all duration-200"
-                          >
-                            <Trash2 size={12} />
-                          </Button>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-        
-        {/* Empty state */}
-        {conversations.length === 0 && (
+      <div className="flex-1 overflow-y-auto p-6">
+        {Object.keys(groupedConversations).length === 0 ? (
+          /* Empty State */
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="flex flex-col items-center justify-center h-64 text-center p-6"
+            className="flex flex-col items-center justify-center h-64 text-center"
           >
-            <div className="w-16 h-16 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-700 rounded-2xl flex items-center justify-center mb-4">
-              <MessageSquare size={24} className="text-slate-400 dark:text-slate-500" />
+            <div className="w-16 h-16 bg-gradient-to-br from-zinc-700 to-zinc-800 rounded-2xl flex items-center justify-center mb-4">
+              <MessageSquare size={24} className="text-zinc-400" />
             </div>
-            {!isCollapsed && (
-              <>
-                <h3 className="text-sm font-medium text-slate-600 dark:text-slate-400 mb-2">
-                  No conversations yet
-                </h3>
-                <p className="text-xs text-slate-500 dark:text-slate-500">
-                  Start a new chat to begin
-                </p>
-              </>
-            )}
+            <h3 className="text-lg font-medium text-white mb-2">
+              {searchQuery || filterModel !== 'all' ? 'No matching conversations' : 'No conversations yet'}
+            </h3>
+            <p className="text-sm text-zinc-400 mb-4">
+              {searchQuery || filterModel !== 'all' ? 'Try adjusting your search or filter' : 'Start a new chat to begin'}
+            </p>
+            <Button
+              onClick={() => {
+                onCreateNew();
+                onTabChange('chat');
+              }}
+              className="bg-gradient-to-r from-neon-blue to-neon-purple hover:from-neon-blue/80 hover:to-neon-purple/80 text-white"
+            >
+              <Plus size={16} className="mr-2" />
+              Start New Chat
+            </Button>
           </motion.div>
+        ) : (
+          /* Grouped Conversations */
+          <div className="space-y-8">
+            {Object.entries(groupedConversations).map(([group, groupConversations]) => (
+              <div key={group}>
+                <h3 className="text-sm font-semibold text-zinc-400 mb-4 uppercase tracking-wider">
+                  {group}
+                </h3>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <AnimatePresence>
+                    {groupConversations.map((conversation, index) => (
+                      <motion.div
+                        key={conversation.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        transition={{ 
+                          duration: 0.3, 
+                          delay: index * 0.05,
+                          ease: [0.4, 0, 0.2, 1]
+                        }}
+                        whileHover={{ 
+                          scale: 1.02,
+                          transition: { duration: 0.2 }
+                        }}
+                        whileTap={{ scale: 0.98 }}
+                        className={`relative rounded-xl cursor-pointer group transition-all duration-300 p-4 border ${
+                          currentConversationId === conversation.id 
+                            ? 'bg-gradient-to-r from-neon-blue/10 to-neon-purple/10 border-neon-blue shadow-lg shadow-neon-blue/20' 
+                            : 'bg-zinc-800/60 border-zinc-700 hover:border-zinc-600 hover:bg-zinc-800/80 hover:shadow-lg'
+                        }`}
+                        onClick={() => handleConversationClick(conversation.id)}
+                      >
+                        {/* Active indicator */}
+                        {currentConversationId === conversation.id && (
+                          <motion.div
+                            layoutId="activeHistoryIndicator"
+                            className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-neon-blue to-neon-purple rounded-t-xl"
+                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                          />
+                        )}
+
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <div className={`p-2 rounded-lg ${
+                              conversation.aiEnabled 
+                                ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20' 
+                                : 'bg-gradient-to-br from-blue-500/20 to-cyan-500/20'
+                            }`}>
+                              {conversation.aiEnabled ? (
+                                <Bot size={16} className="text-green-400" />
+                              ) : (
+                                <User size={16} className="text-blue-400" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-sm font-semibold text-white truncate">
+                                {conversation.room_name}
+                              </h4>
+                              <span className="text-xs text-neon-blue font-medium">
+                                {conversation.ai_model}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Delete Button */}
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 0, scale: 1 }}
+                            whileHover={{ opacity: 1, scale: 1.1 }}
+                            transition={{ duration: 0.2 }}
+                            className="group-hover:opacity-100 transition-opacity duration-200"
+                          >
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteConversation(conversation.id);
+                              }}
+                              className="h-8 w-8 p-0 rounded-lg hover:bg-red-500/20 hover:text-red-400 transition-all duration-200"
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </motion.div>
+                        </div>
+
+                        {/* Last Message */}
+                        {conversation.last_message && (
+                          <p className="text-sm text-zinc-300 line-clamp-2 mb-3 leading-relaxed">
+                            {conversation.last_message}
+                          </p>
+                        )}
+
+                        {/* Footer */}
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-1 text-zinc-400">
+                            <Clock size={12} />
+                            <span>{formatDate(conversation.last_message_at)}</span>
+                          </div>
+                          {conversation.type && (
+                            <span className="px-2 py-1 bg-zinc-700/50 text-zinc-300 rounded-full">
+                              {conversation.type}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Hover Effect */}
+                        <motion.div
+                          className="absolute inset-0 rounded-xl bg-gradient-to-r from-neon-blue/5 to-neon-purple/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 
-export default ConversationSidebar;
+export default HistoryView;

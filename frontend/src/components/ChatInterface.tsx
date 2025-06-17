@@ -2,7 +2,7 @@
 
 import type React from "react";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useScroll, useTransform, AnimatePresence } from "framer-motion";
+import { useScroll, useTransform, AnimatePresence, motion } from "framer-motion";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import { toast } from "@/hooks/use-toast";
@@ -11,8 +11,9 @@ import ChatInput from "./chat/chat_input";
 import MessageBubble from "./chat/message_bubble";
 import TypingIndicator from "./chat/typing_indicator";
 import EmptyState from "./chat/empty_state";
-import ConversationTree from "./ConversationTree";
-import ConversationSidebar from "./ConversationSidebar";
+import ConversationTreeView, {processMessagesForTree} from "./ConversationTree";
+import HistoryView from "./ConversationSidebar";
+
 import {
   sendQueryToBackend,
   checkBackendHealth,
@@ -81,7 +82,11 @@ interface ConversationResponse {
   created_at: string;
 }
 
-const ChatInterface = () => {
+interface ChatInterfaceProps {
+  onTabChange?: (tab: string) => void;
+}
+
+const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [selectedModel, setSelectedModel] = useState<string>(() => {
@@ -107,6 +112,12 @@ const ChatInterface = () => {
   >(null);
   const [messageTree, setMessageTree] = useState<MessageTree[]>([]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [processedMessages, setProcessedMessages] = useState<Message[]>([]);
+  // const [activeTab, setActiveTab] = useState("chat");
+
+  useEffect(() => {
+    setProcessedMessages(processMessagesForTree(messages));
+  }, [messages]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
@@ -283,6 +294,11 @@ const ChatInterface = () => {
     },
     { scope: containerRef }
   );
+
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    onTabChange?.(tab);
+  };
 
   const handleSendMessage = useCallback(async () => {
     if (!inputValue.trim() && attachedFiles.length === 0) return;
@@ -551,19 +567,35 @@ const ChatInterface = () => {
 
   const switchConversation = async (conversationId: number) => {
     try {
-      setCurrentConversationId(conversationId);
+        setCurrentConversationId(conversationId);
 
-      const response = await getConversationWithId(conversationId);
+        const queries = await getConversationWithId(conversationId); // ✅ Direct assignment
 
-      const messageTree = await response.json();
-      setMessageTree(messageTree);
-
-      const flatMessages = flattenMessageTree(messageTree);
-      setMessages(flatMessages);
+        const transformedMessages = queries.map((query: any) => ({
+            id: query.id.toString(),
+            content: query.result, 
+            sender: "ai" as const,
+            timestamp: new Date(query.createdAt),
+            model: query.ModelUsed?.name || "AI",
+            conversationId: query.conversationId
+        }));
+        
+        const queryMessages = queries.map((query: any) => ({
+            id: `q-${query.id}`,
+            content: query.query, 
+            sender: "user" as const,
+            timestamp: new Date(query.createdAt),
+            conversationId: query.conversationId
+        }));
+        
+        const allMessages = [...queryMessages, ...transformedMessages]
+            .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+        
+        setMessages(allMessages);
     } catch (error) {
-      console.error("Failed to switch conversation:", error);
+        console.error("Failed to switch conversation:", error);
     }
-  };
+};
 
   const createNewConversation = async () => {
     try {
@@ -641,7 +673,7 @@ const ChatInterface = () => {
       className="flex h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden"
     >
       {/* Conversation Sidebar */}
-      <ConversationSidebar
+      {/* <ConversationSidebar
         conversations={conversations}
         currentConversationId={currentConversationId}
         onCreateNew={createNewConversation}
@@ -649,15 +681,15 @@ const ChatInterface = () => {
         onDeleteConversation={deleteConversation}
         isCollapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
-      />
+      /> */}
 
       {/* Conversation Tree Sidebar */}
-      <ConversationTree
+      {/* <ConversationTreeView
         messages={messages}
         isOpen={isTreeOpen}
         onToggle={() => setIsTreeOpen(!isTreeOpen)}
         onExport={handleExportConversation}
-      />
+      /> */}
 
       {/* Main Chat Container */}
       <div className="flex-1 flex flex-col relative">
@@ -682,45 +714,103 @@ const ChatInterface = () => {
         />
 
         {/* Messages Area */}
-        <div
-          ref={messagesRef}
-          className="chat-main flex-1 overflow-y-auto relative scroll-smooth mt-[180px] mb-[140px]"
-          style={{
-            scrollBehavior: "smooth",
-            height: "calc(100vh - 320px)",
-          }}
-        >
-          <div className="max-w-6xl mx-auto p-6">
-            <AnimatePresence mode="popLayout">
-              {messages.length === 0 ? (
-                <EmptyState
-                  isBackendHealthy={isBackendHealthy}
-                  onSuggestionClick={setInputValue}
-                />
-              ) : (
-                <div className="space-y-8">
-                  {messages.map((message, index) => (
-                    <MessageBubble
-                      key={message.id}
-                      message={message}
-                      index={index}
-                      onReaction={handleReaction}
-                      onRetry={handleRetryMessage}
-                      getModelDisplayName={getModelDisplayName}
-                    />
-                  ))}
-
-                  <TypingIndicator
-                    isTyping={isTyping}
-                    modelName={getModelDisplayName(selectedModel)}
+              <div
+        ref={messagesRef}
+        className="chat-main flex-1 overflow-y-auto relative scroll-smooth mt-[180px] mb-[140px]"
+        style={{
+          scrollBehavior: "smooth",
+          height: "calc(100vh - 320px)",
+        }}
+      >
+        <div className="max-w-6xl mx-auto p-6">
+          <AnimatePresence mode="wait">
+            {activeTab === 'chat' && (
+              <motion.div
+                key="chat-content"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                {messages.length === 0 ? (
+                  <EmptyState
+                    isBackendHealthy={isBackendHealthy}
+                    onSuggestionClick={setInputValue}
                   />
-                </div>
-              )}
-            </AnimatePresence>
-          </div>
-        </div>
+                ) : (
+                  <div className="space-y-8">
+                    {messages.map((message, index) => (
+                      <MessageBubble
+                        key={message.id}
+                        message={message}
+                        index={index}
+                        onReaction={handleReaction}
+                        onRetry={handleRetryMessage}
+                        getModelDisplayName={getModelDisplayName}
+                      />
+                    ))}
 
-        {/* Chat Input */}
+                    <TypingIndicator
+                      isTyping={isTyping}
+                      modelName={getModelDisplayName(selectedModel)}
+                    />
+                  </div>
+                )}
+              </motion.div>
+            )}
+
+            {activeTab === 'conversation tree' && (
+              <motion.div
+                key="tree-content"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="h-full"
+              >
+                {/* Updated ConversationTreeView */}
+                <ConversationTreeView
+                  messages={processedMessages}
+                  onMessageSelect={(messageId) => {
+                    console.log('Selected message:', messageId);
+                    // Optional: Add message selection logic
+                  }}
+                  onNodeExpand={(nodeId) => {
+                    console.log('Expanded node:', nodeId);
+                    // Optional: Track node expansion
+                  }}
+                  onBranchToggle={(branchId) => {
+                    console.log('Toggled branch:', branchId);
+                    // Optional: Handle branch filtering
+                  }}
+                />
+              </motion.div>
+            )}
+
+            {activeTab === 'history' && (
+              <motion.div
+                key="history-content"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <HistoryView 
+                  conversations={conversations}
+                  currentConversationId={currentConversationId}
+                  onCreateNew={createNewConversation}
+                  onSwitchConversation={switchConversation}
+                  onDeleteConversation={deleteConversation}
+                  onTabChange={onTabChange} 
+                />
+                </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Chat Input - Only show for chat tab */}
+      {activeTab === 'chat' && (
         <ChatInput
           inputValue={inputValue}
           attachedFiles={attachedFiles}
@@ -739,6 +829,8 @@ const ChatInterface = () => {
           onToggleWebSearch={() => setWebSearchEnabled(!webSearchEnabled)}
           onKeyPress={handleKeyPress}
         />
+      )}
+
       </div>
     </div>
   );

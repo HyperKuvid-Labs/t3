@@ -233,7 +233,7 @@ async def generate_ai_conversation_name(query: str, response: str) -> str:
         title = result.text.strip().replace('"', '').replace("Title:", "").strip()
         return title[:50] 
     except:
-        return await generate_conversation_name(query) 
+        return generate_conversation_name(query) 
     
 def generate_conversation_name(first_message: str, max_length: int = 50) -> str:
     cleaned = " ".join(first_message.strip().split())
@@ -243,7 +243,7 @@ def generate_conversation_name(first_message: str, max_length: int = 50) -> str:
     
     return cleaned[:max_length-3] + "..."
 
-def gemini_flash_resp(query: str, emotion: str = "") -> str:
+def gemini_flash_resp(query: str, emotion: str = "", search_context : str = "") -> str:
     
     prompt = (
         f"You are an AI assistant responding to the following user query:\n\n"
@@ -252,6 +252,13 @@ def gemini_flash_resp(query: str, emotion: str = "") -> str:
         "If the topic is technical, use analogies or simple language. "
         "Maintain a friendly, informal tone — like a helpful friend in a casual conversation."
     )
+
+    if search_context:
+        print(f"Search context: {search_context}")
+        prompt += f"""
+        Also, this is the web search context for the query, consider this by giving the resp, if irrelevant, ignore:
+        {search_context}
+        """
 
     if emotion:
         prompt += (
@@ -535,15 +542,13 @@ async def get_current_user_oauth(request: Request):
 
     user = await prisma.user.find_first(where={"email": email})
     if not user:
-        # Auto-create OAuth users if they don't exist
         try:
             user = await prisma.user.create(
                 data={
                     "email": email,
-                    "username": user_info.get("name", email.split("@")[0]),
-                    "authProvider": "google",
-                    "authId": user_info.get("sub"),
-                    "passwordHash": "",  # No password for OAuth users
+                    "name": user_info.get("name", email.split("@")[0]),
+                    "authProvider": "oauth",
+                    "passwordHash": "",  
                 }
             )
         except Exception as e:
@@ -654,14 +659,55 @@ async def get_default_conversation(user_id: int) -> int:
     return conversation.id
 
 
-@app.get("/query/gemini_flash")
+@app.post("/query/gemini_flash")
 async def query_gemini_flash(
-    query: str, emotion: str, current_user: User = Depends(get_current_user)
+    data : ConvoModel, current_user: User = Depends(get_current_user)
 ):
-    response = gemini_flash_resp(query, emotion)
+    query = data.query
+    emotion = data.emotion
+    webSearch = data.webSearch
+    conversation_id = data.Conversation_id
+
+    search_context = ""
+
+    conversation = await prisma.conversation.find_first(
+        where={
+            "id": conversation_id,
+            "users": {"some": {"id": current_user.id}}
+        }
+    )
+    
+    if not conversation:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found or access denied"
+        )
+    
+    try:
+        if webSearch:
+            search_results = await google_web_search(query, GOOGLE_API_KEY, GOOGLE_SEARCH_ENGINE_ID)
+            if search_results and isinstance(search_results, list):
+                search_context = "\n\nWeb Search Results:\n"
+                for i, result in enumerate(search_results[:3], 1):
+                    search_context += f"{i}. {result['title']}\n{result['snippet']}\n{result['link']}\n\n"
+    except Exception as e:
+        print(e)
+
+    response = gemini_flash_resp(query, emotion, search_context=search_context)
 
     model_id = await get_model_by_name("online", "gemini2_5_flash")
     conversation_id = await get_default_conversation(current_user.id)
+
+    existing_queries = await prisma.queryresp.count(
+        where={"conversationId": conversation_id}
+    )
+    
+    if existing_queries == 0:
+        new_name = await generate_ai_conversation_name(query=query, response=response)
+        await prisma.conversation.update(
+            where={"id": conversation_id},
+            data={"roomName": new_name}
+        )
 
     query_resp = await prisma.queryresp.create(
         data={
@@ -676,11 +722,11 @@ async def query_gemini_flash(
     return {
         "query": query,
         "response": response,
-        "model": "gemini_flash",
-        "user": current_user.username,
+        "model": "gemini_pro",
+        "user": current_user.email,
         "query_id": query_resp.id,
+        "conversation_id": conversation_id,
     }
-
 
 @app.post("/query/gemini_pro")
 async def query_gemini_pro(
@@ -896,7 +942,7 @@ async def auth_google(request: Request):
                 data={
                     "email": email,
                     "name": user_info.get("name", email.split("@")[0]),
-                    "authProvider": "google",
+                    "authProvider": "oauth",
                     "passwordHash": ""
                 }
             )
@@ -1664,7 +1710,17 @@ async def get_messages(conversation_id: int, current_user: User = Depends(get_cu
     try:
         conversation = await prisma.conversation.find_unique(
             where={"id": conversation_id},
-            include={"messages": True}
+            include={
+                "queries": { 
+                    "include": {
+                        "user": True,
+                        "ModelUsed": True
+                    },
+                    "order_by": {
+                        "createdAt": "asc"
+                    }
+                }
+            }
         )
 
         if not conversation:
@@ -1774,10 +1830,12 @@ async def send_project_email(email: str, zip_path: str, project_id: str, stack_i
 
         Note: This is a beta service - minor import adjustments may be needed.
 
+        Also, the zip file needs to be renamed from .zip.potato to .zip before you can open it. Sorry for the inconvenience!
+
         Happy coding! 🎉
 
         Best regards,
-        Your Project Generator Team
+        Gideon
         """
         
         msg.attach(MIMEText(body, 'plain'))
@@ -1789,7 +1847,7 @@ async def send_project_email(email: str, zip_path: str, project_id: str, stack_i
         encoders.encode_base64(part)
         part.add_header(
             'Content-Disposition',
-            f'attachment; filename= {project_id}.zip'
+            f'attachment; filename= {project_id}.zip.potato'
         )
         msg.attach(part)
         
