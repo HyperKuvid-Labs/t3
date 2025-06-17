@@ -303,7 +303,7 @@ const Index = () => {
             transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
           />
           <div className="text-center">
-            <h2 className="text-2xl font-bold text-white mb-2">Initializing Gidvion</h2>
+            <h2 className="text-2xl font-bold text-white mb-2">Initializing Gideon</h2>
             <p className="text-slate-400">Setting up your AI workspace...</p>
           </div>
         </motion.div>

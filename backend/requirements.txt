@@ -12,3 +12,4 @@ networkx
 matplotlib
 PyPDF2
 networkx
+langchain-groq

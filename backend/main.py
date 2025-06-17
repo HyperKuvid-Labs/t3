@@ -42,6 +42,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from email.mime.text import MIMEText
+from langchain_groq import ChatGroq
 
 oauth = OAuth()
 
@@ -53,6 +54,7 @@ GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 CLAUDE_API_KEY = os.getenv('CLAUDE_API_KEY')
 DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
 GOOGLE_SEARCH_ENGINE_ID=os.getenv('GOOGLE_SEARCH_ENGINE_ID')
+GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
 oauth.register(
     name="google",
@@ -179,6 +181,10 @@ GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 genai.configure(api_key="AIzaSyAxlaAthy3YF2Ul15VdgCwPhSoOyGK2hWk")
 
 # client = anthropic.Anthropic(CLAUDE_API_KEY)
+
+# llm = ChatGroq(
+#     model = 
+# )
 
 
 class UserModel(BaseModel):
@@ -323,7 +329,6 @@ def gemini_pro_resp(query: str, emotion: str, search_context : str):
 # and more importantly dont delete this
 
 # ollama models chosen - gemma3:27b, llama3.3:70b, deepseek-r1:70b, phi4:14b, need this for schema
-
 
 def ollama_gemma3_resp(query: str, emotion: str):
     prompt = f"""
@@ -620,7 +625,7 @@ class ConvoModel(BaseModel):
 
 async def welcome(current_user: User = Depends(get_current_user_flexible)):
     return {
-        "message": f"Welcome to Gidvion, {current_user.username}!",
+        "message": f"Welcome to Gideon, {current_user.username}!",
         "user_id": current_user.id,
         "auth_provider": current_user.authProvider,
     }
@@ -696,7 +701,6 @@ async def query_gemini_flash(
     response = gemini_flash_resp(query, emotion, search_context=search_context)
 
     model_id = await get_model_by_name("online", "gemini2_5_flash")
-    conversation_id = await get_default_conversation(current_user.id)
 
     existing_queries = await prisma.queryresp.count(
         where={"conversationId": conversation_id}
@@ -797,15 +801,24 @@ async def query_gemini_pro(
         "conversation_id": conversation_id,
     }
 
-
-@app.get("/query/ollama_gemma3")
+@app.post("/query/ollama_gemma3")
 async def query_ollama_gemma3(
     data: ConvoModel, current_user: User = Depends(get_current_user)
 ):
+    conversation_id = data.Conversation_id
     response = ollama_gemma3_resp(data.query, data.emotion)
 
     model_id = await get_model_by_name("ollama", "gemma3_27b")
-    conversation_id = await get_default_conversation(current_user.id)
+    existing_queries = await prisma.queryresp.count(
+        where={"conversationId": conversation_id}
+    )
+    
+    if existing_queries == 0:
+        new_name = await generate_ai_conversation_name(query=data.query, response=response)
+        await prisma.conversation.update(
+            where={"id": conversation_id},
+            data={"roomName": new_name}
+        )
 
     query_resp = await prisma.queryresp.create(
         data={
@@ -817,12 +830,14 @@ async def query_ollama_gemma3(
         }
     )
 
+
     return {
         "query": data.query,
         "response": response,
-        "model": "ollama_gemma3",
-        "user": current_user.username,
+        "model": "gemini_pro",
+        "user": current_user.email,
         "query_id": query_resp.id,
+        "conversation_id": conversation_id,
     }
 
 
@@ -830,10 +845,21 @@ async def query_ollama_gemma3(
 async def query_ollama_llama3(
     data: ConvoModel, current_user: User = Depends(get_current_user)
 ):
+    conversation_id = data.Conversation_id
     response = ollama_llama3_resp(data.query, data.emotion)
 
     model_id = await get_model_by_name("ollama", "llama3_3_70b")
-    conversation_id = await get_default_conversation(current_user.id)
+
+    existing_queries = await prisma.queryresp.count(
+        where={"conversationId": conversation_id}
+    )
+    
+    if existing_queries == 0:
+        new_name = await generate_ai_conversation_name(query=data.query, response=response)
+        await prisma.conversation.update(
+            where={"id": conversation_id},
+            data={"roomName": new_name}
+        )
 
     query_resp = await prisma.queryresp.create(
         data={
@@ -845,23 +871,35 @@ async def query_ollama_llama3(
         }
     )
 
+
     return {
         "query": data.query,
         "response": response,
-        "model": "ollama_llama3",
-        "user": current_user.username,
+        "model": "gemini_pro",
+        "user": current_user.email,
         "query_id": query_resp.id,
+        "conversation_id": conversation_id,
     }
-
 
 @app.post("/query/ollama_deepseek")
 async def query_ollama_deepseek(
     data: ConvoModel, current_user: User = Depends(get_current_user)
 ):
+    conversation_id = data.Conversation_id
     response = ollama_deepseek_resp(data.query, data.emotion)
 
     model_id = await get_model_by_name("ollama", "deepseek_r1_70b")
-    conversation_id = await get_default_conversation(current_user.id)
+
+    existing_queries = await prisma.queryresp.count(
+        where={"conversationId": conversation_id}
+    )
+
+    if existing_queries == 0:
+        new_name = await generate_ai_conversation_name(query=data.query, response=response)
+        await prisma.conversation.update(
+            where={"id": conversation_id},
+            data={"roomName": new_name}
+        )
 
     query_resp = await prisma.queryresp.create(
         data={
@@ -873,23 +911,35 @@ async def query_ollama_deepseek(
         }
     )
 
+
     return {
         "query": data.query,
         "response": response,
-        "model": "ollama_deepseek",
-        "user": current_user.username,
+        "model": "gemini_pro",
+        "user": current_user.email,
         "query_id": query_resp.id,
+        "conversation_id": conversation_id,
     }
 
-
-@app.get("/query/ollama_phi")
+@app.post("/query/ollama_phi")
 async def query_ollama_phi(
     data: ConvoModel, current_user: User = Depends(get_current_user)
 ):
+    conversation_id = data.Conversation_id
     response = ollama_phi_resp(data.query, data.emotion)
 
     model_id = await get_model_by_name("ollama", "phi4_14b")
-    conversation_id = await get_default_conversation(current_user.id)
+
+    existing_queries = await prisma.queryresp.count(
+        where={"conversationId": conversation_id}
+    )
+
+    if existing_queries == 0:
+        new_name = await generate_ai_conversation_name(query=data.query, response=response)
+        await prisma.conversation.update(
+            where={"id": conversation_id},
+            data={"roomName": new_name}
+        )
 
     query_resp = await prisma.queryresp.create(
         data={
@@ -901,14 +951,15 @@ async def query_ollama_phi(
         }
     )
 
+
     return {
         "query": data.query,
         "response": response,
-        "model": "ollama_phi",
-        "user": current_user.username,
+        "model": "gemini_pro",
+        "user": current_user.email,
         "query_id": query_resp.id,
+        "conversation_id": conversation_id,
     }
-
 
 @app.get("/health")
 async def health_check():

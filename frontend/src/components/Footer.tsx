@@ -9,7 +9,7 @@ const Footer = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {/* Brand */}
           <div className="space-y-3">
-            <h3 className="text-lg font-bold text-neon-blue">Gidvion</h3>
+            <h3 className="text-lg font-bold text-neon-blue">Gideon</h3>
             <p className="text-sm text-neon-muted">
               AI-powered chat platform for collaborative conversations and project building.
             </p>
@@ -49,7 +49,7 @@ const Footer = () => {
           <div className="space-y-3">
             <h4 className="font-semibold text-neon-text">Version</h4>
             <div className="text-sm text-neon-muted">
-              <p>Gidvion v1.0.0</p>
+              <p>Gideon v1.0.0</p>
               <p>Last updated: {new Date().toLocaleDateString()}</p>
             </div>
           </div>
