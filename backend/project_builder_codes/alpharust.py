@@ -1207,10 +1207,10 @@ def main():
     json_file_name = "projects_metadata.json"
     metadata_dict = {project_name: []}
 
-    output_dir = os.path.dirname(json_file_name)
+    # output_dir = os.path.dirname(json_file_name)
     if output_dir:
         os.makedirs(output_dir, exist_ok=True)
-    dfs_tree_and_gen(root=folder_tree, refined_prompt=refined_prompt, tree_structure=response, project_name=project_name, current_path="", parent_context="", json_file_name=json_file_name, metadata_dict=metadata_dict, dependency_analyzer=dependency_analyzer)
+    dfs_tree_and_gen(root=folder_tree, refined_prompt=refined_prompt, tree_structure=response, project_name=output_dir, current_path="", parent_context="", json_file_name=json_file_name, metadata_dict=metadata_dict, dependency_analyzer=dependency_analyzer)
 
     dependency_analyzer.visualize_graph()
 

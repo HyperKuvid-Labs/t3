@@ -50,14 +50,20 @@ genai.configure(api_key="AIzaSyAb56f8gsiKgrg7ry3UWcuiDbGQsLMFJj0")
 # models/gemini-2.0-pro-exp-02-05
 
 GENERATABLE_FILES = {
-    '.go', '.html', '.css', '.scss', '.sass', '.less', '.json', '.js', '.ts',
+    '.dart', '.html', '.css', '.scss', '.sass', '.less', '.json', '.js', '.ts',
     '.md', '.yml', '.yaml', '.env', '.txt', '.png', '.ico', '.svg', '.jpg', 
-    '.jpeg', '.webp', '.gif', '.sh', '.mod', '.sum', '.tmpl', '.tpl'
+    '.jpeg', '.webp', '.gif', '.sh', '.gradle', '.kt', '.swift', '.xml',
+    '.plist', '.properties', '.lock', '.g.dart', '.freezed.dart'
 }
+
 GENERATABLE_FILENAMES = {
-    'main.go', 'go.mod', 'go.sum', 'Dockerfile', 'docker-compose.yml',
-    'README.md', '.gitignore', '.env', '.env.example', 'Makefile',
-    'config.yaml', 'config.json', '.air.toml', 'swagger.yaml', 'swagger.json'
+    'main.dart', 'pubspec.yaml', 'pubspec.lock', 'analysis_options.yaml',
+    'Dockerfile', 'docker-compose.yml', 'README.md', '.gitignore', 
+    '.env', '.env.example', 'Makefile', 'android_app_build.gradle',
+    'build.gradle', 'gradle.properties', 'settings.gradle',
+    'Info.plist', 'Runner.xcodeproj', 'AppDelegate.swift',
+    'MainActivity.kt', 'AndroidManifest.xml', 'flutter_launcher_icons.yaml',
+    'firebase_options.dart', 'google-services.json', 'GoogleService-Info.plist'
 }
 
 class TreeNode:
@@ -102,39 +108,64 @@ class DependencyAnalyzer:
         dependencies = set()
         file_dir = os.path.dirname(file_path)
         
-        if file_path.endswith(".go"):
-            import_statements = re.findall(r'import\s+(?:\([^)]*\)|"([^"]+)")', content)
+        if file_path.endswith(".dart"):
+            import_statements = re.findall(r'import\s+[\'"]([^\'"]+)[\'"]', content)
             for imp in import_statements:
-                if imp:
-                    dependencies.add(imp)
+                dependencies.add(imp)
             
-            multi_import = re.findall(r'import\s+\(\s*([^)]+)\s*\)', content, re.DOTALL)
-            for block in multi_import:
-                imports = re.findall(r'"([^"]+)"', block)
-                for imp in imports:
-                    dependencies.add(imp)
+            export_statements = re.findall(r'export\s+[\'"]([^\'"]+)[\'"]', content)
+            for exp in export_statements:
+                dependencies.add(exp)
             
-            gin_routes = re.findall(r'\.(?:GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(\s*"([^"]+)"', content)
-            for route in gin_routes:
-                dependencies.add(f"route:{route}")
+            part_statements = re.findall(r'part\s+[\'"]([^\'"]+)[\'"]', content)
+            for part in part_statements:
+                dependencies.add(part)
             
-            template_usage = re.findall(r'\.HTML\s*\(\s*\d+\s*,\s*"([^"]+)"', content)
-            for template in template_usage:
-                dependencies.add(template)
+            part_of_statements = re.findall(r'part\s+of\s+[\'"]([^\'"]+)[\'"]', content)
+            for part_of in part_of_statements:
+                dependencies.add(part_of)
             
-            struct_usage = re.findall(r'([A-Z][a-zA-Z0-9]*)\s*{', content)
-            for struct in struct_usage:
-                dependencies.add(f"struct:{struct}")
+            asset_references = re.findall(r'[\'"]assets/([^\'"]+)[\'"]', content)
+            for asset in asset_references:
+                dependencies.add(f"assets/{asset}")
+            
+            route_definitions = re.findall(r'[\'"](/[^\'"]*)[\'"]', content)
+            for route in route_definitions:
+                if route.startswith('/') and len(route) > 1:
+                    dependencies.add(f"route:{route}")
+            
+            class_usage = re.findall(r'class\s+([A-Z][a-zA-Z0-9]*)', content)
+            for class_name in class_usage:
+                dependencies.add(f"class:{class_name}")
 
-        elif file_path.endswith((".mod", ".sum")):
-            if file_path.endswith(".mod"):
-                module_deps = re.findall(r'require\s+([^\s]+)', content)
-                for dep in module_deps:
-                    dependencies.add(dep)
+        elif file_path.endswith("pubspec.yaml"):
+            try:
+                import yaml
+                yaml_data = yaml.safe_load(content)
                 
-                replace_deps = re.findall(r'replace\s+([^\s]+)', content)
-                for dep in replace_deps:
-                    dependencies.add(dep)
+                if isinstance(yaml_data, dict):
+                    if 'dependencies' in yaml_data:
+                        for dep_name in yaml_data['dependencies'].keys():
+                            if dep_name != 'flutter':
+                                dependencies.add(dep_name)
+                    
+                    if 'dev_dependencies' in yaml_data:
+                        for dep_name in yaml_data['dev_dependencies'].keys():
+                            dependencies.add(dep_name)
+                    
+                    if 'flutter' in yaml_data and 'assets' in yaml_data['flutter']:
+                        for asset in yaml_data['flutter']['assets']:
+                            dependencies.add(asset)
+                    
+                    if 'flutter' in yaml_data and 'fonts' in yaml_data['flutter']:
+                        for font_family in yaml_data['flutter']['fonts']:
+                            if 'fonts' in font_family:
+                                for font in font_family['fonts']:
+                                    if 'asset' in font:
+                                        dependencies.add(font['asset'])
+                        
+            except Exception as e:
+                print(f"Error parsing pubspec.yaml {file_path}: {e}")
 
         elif file_path.endswith(".json"):
             try:
@@ -160,15 +191,7 @@ class DependencyAnalyzer:
             for use_stmt in use_statements:
                 dependencies.add(use_stmt)
 
-        elif file_path.endswith((".html", ".tmpl", ".tpl")):
-            template_includes = re.findall(r'{{\s*template\s+"([^"]+)"', content)
-            for template in template_includes:
-                dependencies.add(template)
-            
-            partial_includes = re.findall(r'{{\s*partial\s+"([^"]+)"', content)
-            for partial in partial_includes:
-                dependencies.add(partial)
-            
+        elif file_path.endswith(".html"):
             scripts = re.findall(r'<script[^>]+src=[\'"]([^\'"]+)[\'"]', content)
             for script in scripts:
                 dependencies.add(script)
@@ -176,6 +199,10 @@ class DependencyAnalyzer:
             links = re.findall(r'<link[^>]+href=[\'"]([^\'"]+)[\'"]', content)
             for link in links:
                 dependencies.add(link)
+            
+            img_tags = re.findall(r'<img[^>]+src=[\'"]([^\'"]+)[\'"]', content)
+            for img in img_tags:
+                dependencies.add(img)
 
         elif file_path.endswith((".yml", ".yaml")):
             try:
@@ -208,6 +235,64 @@ class DependencyAnalyzer:
             for req in require_statements:
                 dependencies.add(req)
 
+        elif file_path.endswith(".ts"):
+            import_statements = re.findall(r'import\s+.*?from\s+[\'"]([^\'"]+)[\'"]', content)
+            for imp in import_statements:
+                dependencies.add(imp)
+            
+            require_statements = re.findall(r'require\([\'"]([^\'"]+)[\'"]\)', content)
+            for req in require_statements:
+                dependencies.add(req)
+
+        elif file_path.endswith(".gradle"):
+            implementation_deps = re.findall(r'implementation\s+[\'"]([^\'"]+)[\'"]', content)
+            for dep in implementation_deps:
+                dependencies.add(dep)
+            
+            api_deps = re.findall(r'api\s+[\'"]([^\'"]+)[\'"]', content)
+            for dep in api_deps:
+                dependencies.add(dep)
+            
+            test_deps = re.findall(r'testImplementation\s+[\'"]([^\'"]+)[\'"]', content)
+            for dep in test_deps:
+                dependencies.add(dep)
+
+        elif file_path.endswith(".kt"):
+            import_statements = re.findall(r'import\s+([^\s]+)', content)
+            for imp in import_statements:
+                dependencies.add(imp)
+            
+            class_usage = re.findall(r'class\s+([A-Z][a-zA-Z0-9]*)', content)
+            for class_name in class_usage:
+                dependencies.add(f"class:{class_name}")
+
+        elif file_path.endswith(".swift"):
+            import_statements = re.findall(r'import\s+([^\s]+)', content)
+            for imp in import_statements:
+                dependencies.add(imp)
+            
+            class_usage = re.findall(r'class\s+([A-Z][a-zA-Z0-9]*)', content)
+            for class_name in class_usage:
+                dependencies.add(f"class:{class_name}")
+
+        elif file_path.endswith(".xml"):
+            if "AndroidManifest.xml" in file_path:
+                permissions = re.findall(r'<uses-permission[^>]+android:name=[\'"]([^\'"]+)[\'"]', content)
+                for perm in permissions:
+                    dependencies.add(f"permission:{perm}")
+                
+                activities = re.findall(r'<activity[^>]+android:name=[\'"]([^\'"]+)[\'"]', content)
+                for activity in activities:
+                    dependencies.add(f"activity:{activity}")
+            
+            drawable_refs = re.findall(r'@drawable/([a-zA-Z0-9_]+)', content)
+            for drawable in drawable_refs:
+                dependencies.add(f"drawable:{drawable}")
+            
+            string_refs = re.findall(r'@string/([a-zA-Z0-9_]+)', content)
+            for string in string_refs:
+                dependencies.add(f"string:{string}")
+
         elif file_path.endswith("Makefile"):
             target_deps = re.findall(r'^([a-zA-Z0-9_-]+):\s*([a-zA-Z0-9_\s-]*)', content, re.MULTILINE)
             for target, deps in target_deps:
@@ -217,29 +302,25 @@ class DependencyAnalyzer:
         
         return dependencies
     
-    def resolve_go_import(self, file_dir: str, import_path: str):
+    def resolve_dart_import(self, file_dir: str, import_path: str):
         if import_path.startswith('./') or import_path.startswith('../'):
             return os.path.join(file_dir, import_path)
         
+        if import_path.startswith('package:'):
+            return import_path
+        
         project_root = self.find_project_root(file_dir)
         if project_root:
-            go_mod_path = os.path.join(project_root, 'go.mod')
-            if os.path.exists(go_mod_path):
-                with open(go_mod_path, 'r') as f:
-                    mod_content = f.read()
-                    module_match = re.search(r'module\s+([^\s]+)', mod_content)
-                    if module_match:
-                        module_name = module_match.group(1)
-                        if import_path.startswith(module_name):
-                            relative_path = import_path.replace(module_name, '').lstrip('/')
-                            return os.path.join(project_root, relative_path)
+            lib_path = os.path.join(project_root, 'lib', import_path)
+            if os.path.exists(lib_path):
+                return lib_path
         
         return import_path
     
     def find_project_root(self, current_dir: str):
         while current_dir != os.path.dirname(current_dir):
-            if (os.path.exists(os.path.join(current_dir, 'go.mod')) or 
-                os.path.exists(os.path.join(current_dir, 'main.go'))):
+            if (os.path.exists(os.path.join(current_dir, 'pubspec.yaml')) or 
+                os.path.exists(os.path.join(current_dir, 'lib'))):
                 return current_dir
             current_dir = os.path.dirname(current_dir)
         return current_dir
@@ -253,40 +334,49 @@ class DependencyAnalyzer:
     def get_all_nodes(self) -> List[str]:
         return list(self.graph.nodes)
     
-    def get_go_packages(self):
+    def get_dart_packages(self):
         packages = set()
         for node in self.graph.nodes:
-            if node.endswith("go.mod"):
+            if node.endswith("pubspec.yaml"):
                 for dep in self.get_dependencies(node):
-                    if not dep.startswith('./') and not dep.endswith('.go'):
+                    if not dep.startswith('./') and not dep.endswith('.dart'):
                         packages.add(dep)
         return packages
     
-    def get_gin_routes(self):
+    def get_flutter_routes(self):
         routes = set()
         for node in self.graph.nodes:
-            if node.endswith(".go"):
+            if node.endswith(".dart"):
                 for dep in self.get_dependencies(node):
                     if dep.startswith('route:'):
                         routes.add(dep.replace('route:', ''))
         return routes
     
-    def get_templates(self):
-        templates = set()
+    def get_assets(self):
+        assets = set()
         for node in self.graph.nodes:
             for dep in self.get_dependencies(node):
-                if dep.endswith(('.html', '.tmpl', '.tpl')):
-                    templates.add(dep)
-        return templates
+                if dep.startswith('assets/'):
+                    assets.add(dep)
+        return assets
     
-    def get_structs(self):
-        structs = set()
+    def get_classes(self):
+        classes = set()
         for node in self.graph.nodes:
-            if node.endswith(".go"):
+            if node.endswith((".dart", ".kt", ".swift")):
                 for dep in self.get_dependencies(node):
-                    if dep.startswith('struct:'):
-                        structs.add(dep.replace('struct:', ''))
-        return structs
+                    if dep.startswith('class:'):
+                        classes.add(dep.replace('class:', ''))
+        return classes
+    
+    def get_permissions(self):
+        permissions = set()
+        for node in self.graph.nodes:
+            if node.endswith(".xml"):
+                for dep in self.get_dependencies(node):
+                    if dep.startswith('permission:'):
+                        permissions.add(dep.replace('permission:', ''))
+        return permissions
     
     def visualize_graph(self):
         try:
@@ -295,209 +385,230 @@ class DependencyAnalyzer:
             
             node_colors = []
             for node in self.graph.nodes:
-                if node.endswith('.go'):
+                if node.endswith('.dart'):
                     node_colors.append('lightblue')
-                elif node.endswith(('.html', '.tmpl', '.tpl')):
+                elif node.endswith(('.html', '.xml')):
                     node_colors.append('lightgreen')
                 elif node.endswith(('.css', '.scss')):
                     node_colors.append('lightcoral')
-                elif node.endswith(('.mod', '.sum')):
+                elif node.endswith(('pubspec.yaml', 'pubspec.lock')):
                     node_colors.append('lightyellow')
+                elif node.endswith(('.kt', '.swift')):
+                    node_colors.append('lightpink')
+                elif node.endswith('.gradle'):
+                    node_colors.append('lightcyan')
                 else:
                     node_colors.append('lightgray')
             
             nx.draw(self.graph, pos, with_labels=True, arrows=True, 
                    node_size=2000, node_color=node_colors, 
                    font_size=8, font_color='black', edge_color='gray')
-            plt.title("Go Gin Dependency Graph")
+            plt.title("Flutter Dependency Graph")
             plt.show()
         except ImportError:
             print("Matplotlib is not installed. Skipping graph visualization.")
 
-
 def refine_prompt(prompt: string) ->  string:
     resp = genai.GenerativeModel("gemini-2.5-flash-preview-05-20").generate_content(
         contents = f"""
-            You are a senior Go + Gin architect. Your task is to take a high-level project idea and generate a detailed prompt that instructs a language model to output a production-ready Go + Gin application folder structure, including all directories and file names, but no file contents or code.
+            You are a senior Flutter architect. Your task is to take a high-level project idea and generate a detailed prompt that instructs a language model to output a production-ready Flutter application folder structure, including all directories and file names, but no file contents or code.
 
 Analyse the {prompt} first—if it lacks clarity or scope, elaborate on it appropriately before proceeding. If the prompt is already detailed, return it as is.
 
 project_name : {prompt}
 
 Follow these rules when writing the refined prompt:
-Prompt Template to Generate:
-Project Name : 
 
-Generate the folder structure only (no code or file contents) for a Go + Gin project named .
+Prompt Template to Generate:
+
+Project Name :
+
+Generate the folder structure only (no code or file contents) for a Flutter project named .
 
 This project is a , with the following key features:
 
+Use Flutter best practices:
 
+Modular, reusable widget structure with clear separation of concerns.
 
+Strictly include pubspec.yaml in the root directory to manage dependencies.
 
-
-Use Go + Gin best practices:
-
-Modular, reusable package structure with clear separation of concerns.
-
-Strictly include go.mod in the root directory to manage dependencies.
-
-Follow the standard Go project layout for production-grade applications.
+Follow the standard Flutter project layout for production-grade applications.
 
 Include standard folders and files for:
 
-Handlers: handlers/
+Screens: lib/screens/
 
-Models: models/
+Widgets: lib/widgets/
 
-Services: services/
+Models: lib/models/
 
-Middleware: middleware/
+Services: lib/services/
 
-Routes: routes/
+Providers/State Management: lib/providers/ or lib/bloc/
 
-Database: database/
+Utils: lib/utils/
 
-Configuration: config/
+Constants: lib/constants/
 
-Static assets: static/
+Assets: assets/
 
-Templates: templates/
+Configuration: lib/config/
 
-Main entry point: main.go
+Main entry point: lib/main.dart
 
 The application modules should include, but are not limited to:
 
-handlers – HTTP request handlers with proper organization.
+screens – UI screens and page components with proper organization
 
-models – data structures and database models.
+widgets – reusable custom widgets and components
 
-services – business logic and service layer.
+models – data structures and entity models
 
-middleware – HTTP middleware and authentication guards.
+services – API calls, database operations, and external service integrations
 
-routes – route definitions and API endpoints.
+providers/bloc – state management and business logic
 
-Follow Go and Gin naming conventions and proper project structuring.
+utils – helper functions and utilities
+
+constants – app constants, themes, and configuration values
+
+Follow Flutter and Dart naming conventions and proper project structuring.
 
 Return only the folder structure with relevant file names in a tree view format.
 Do not include any code or file contents.
 
-Additional Technical Requirements & Best Practices:
-Maintain modularity and reusability across all Go packages.
+Additional Technical Requirements & Best Practices
+Maintain modularity and reusability across all Flutter packages.
 
-Use a standard Go project layout:
+Use a standard Flutter project layout:
 
-Root project directory with go.mod and main.go
+Root project directory with pubspec.yaml and lib/main.dart
 
-Handlers directory for HTTP request handling
+Screens directory for UI pages and navigation
+
+Widgets directory for reusable components
 
 Models directory for data structures
 
-Services directory for business logic
+Services directory for business logic and API integration
 
-Database directory for database connections and migrations
+State management directory (providers/, bloc/, or riverpod/)
 
-Config directory for application configuration
+Utils directory for helper functions
 
-Static directory for static assets
+Constants directory for app-wide constants
 
-Templates directory for HTML templates
+Assets directory for images, fonts, and other resources
 
-Include go.mod, go.sum, .env.example, .env, README.md, .gitignore
+Platform-specific directories: android/, ios/, web/, windows/, macos/, linux/
 
-Placeholders for deployment: Dockerfile, docker-compose.yml, .github/workflows/, etc.
+Include pubspec.yaml, pubspec.lock, analysis_options.yaml, README.md, .gitignore
 
-Each package should follow Go conventions with proper organization
+Placeholders for deployment: Dockerfile, .github/workflows/, firebase.json, etc.
 
-The application should support JSON APIs and HTML template rendering
+Each package should follow Dart conventions with proper organization
 
-📌 Backend Development Guidelines:
-Use Go modules for dependency management. All logic must reside in properly structured .go files organized under appropriate packages.
+The application should support multiple platforms (iOS, Android, Web, Desktop)
 
-Leverage Gin framework with proper middleware architecture. Include HTTP handlers with clear separation of concerns and proper request/response handling.
+📱 Flutter Development Guidelines
+Use Flutter packages for dependency management. All logic must reside in properly structured .dart files organized under appropriate directories.
 
-Use structured logging and error handling throughout the application. Organize custom middleware and utilities in dedicated packages.
+Leverage Flutter's widget architecture with proper state management. Include screens with clear separation of concerns and proper widget composition.
 
-Ensure proper API design, database integration, and performance optimization through Go's built-in features and Gin's middleware system.
+Use structured error handling and logging throughout the application. Organize custom widgets and utilities in dedicated packages.
 
-Example Input:
-Input: e-commerce marketplace
+Ensure proper responsive design, platform integration, and performance optimization through Flutter's built-in features and community packages.
 
-Expected Refined Prompt Output:
-Project Name : ecommerce_marketplace
+Example Input
+Input: social media app
 
-Generate the folder structure only (no code or file contents) for a Go + Gin project named ecommerce_marketplace.
+Expected Refined Prompt Output
+Project Name : social_media_app
 
-The project is an E-commerce Marketplace with the following key features:
+Generate the folder structure only (no code or file contents) for a Flutter project named social_media_app.
 
-Users can browse products, add items to cart, and complete purchases.
+The project is a Social Media App with the following key features:
 
-Vendors can register, manage product listings, and track sales.
+Users can create profiles, post content, and interact with other users
 
-Administrators can manage users, moderate listings, and oversee platform operations.
+Real-time messaging and notifications
 
-Real-time inventory tracking and order management.
+Photo and video sharing capabilities
+
+Social features like likes, comments, and follows
+
+Content discovery and personalized feeds
 
 User Roles and Capabilities:
 
-Customers: Browse products, manage cart, place orders, and track shipments.
+Users: Create posts, interact with content, manage profile, and connect with others
 
-Vendors: Manage product catalog, process orders, and view analytics.
+Moderators: Content moderation and user management
 
-Admins: Platform management, user moderation, and system configuration.
+Admins: Platform management and analytics
 
-Use Go + Gin best practices:
+Use Flutter best practices:
 
-Structure the project with modular Go package architecture.
+Structure the project with modular Flutter architecture.
 
-Implement RESTful API endpoints with Gin routes.
+Implement responsive UI with proper state management.
 
-Use Go modules for dependency management with proper versioning.
+Use Flutter packages for dependency management with proper versioning.
 
-Implement proper database integration and business logic separation.
+Implement proper API integration and local data persistence.
 
-Follow standard Go project layout with clear package boundaries.
+Follow standard Flutter project layout with clear package boundaries.
 
 Include folders for:
 
-handlers/
+lib/screens/
 
-models/
+lib/widgets/
 
-services/
+lib/models/
 
-middleware/
+lib/services/
 
-routes/
+lib/providers/
 
-database/
+lib/utils/
+
+lib/constants/
+
+assets/
 
 Application modules to include:
 
-handlers
+screens
+
+widgets
 
 models
 
 services
 
-middleware
+providers
 
-routes
+utils
+
+constants
 
 config
 
-Include standard Go files such as:
+Include standard Flutter files such as:
 
-go.mod and main.go in the root
+pubspec.yaml and lib/main.dart in the root
 
-Handler files in handlers/ package
+Screen files in lib/screens/ directory
 
-Model definitions in models/ package
+Widget definitions in lib/widgets/ directory
 
-API routes in routes/ package
+Model classes in lib/models/ directory
 
-Service logic in services/ package
+Service logic in lib/services/ directory
+
+State management in lib/providers/ directory
 
 Return only the complete end-to-end folder structure in a tree view format. Do not include any file content or code.
 """
@@ -542,15 +653,15 @@ def generate_file_metadata(context: str, filepath: str, refined_prompt: str, tre
     file_type = os.path.splitext(filepath)[1]
     filename = os.path.basename(filepath)
 
-    prompt = f"""You are analyzing a file from a Go + Gin project. Generate a detailed yet concise metadata description that captures its purpose, structure, and relationships.
+    prompt = f"""You are analyzing a file from a Flutter project. Generate a detailed yet concise metadata description that captures its purpose, structure, and relationships.
 
 File Information
 
 File Name: {filename}
 
-File Type: {file_type} (e.g., .go, .mod, .sum, .json, .yaml, .html, .css)
+File Type: {file_type} (e.g., .dart, .yaml, .json, .xml, .gradle, .swift, .kt, .html, .css)
 
-Project Location: {context} (e.g., handlers/, models/, services/, middleware/, routes/, config/, templates/)
+Project Location: {context} (e.g., lib/screens/, lib/widgets/, lib/models/, lib/services/, lib/providers/, lib/utils/, assets/, android/, ios/)
 
 Project Idea: {refined_prompt}
 
@@ -562,37 +673,41 @@ File Content:
 
 What to include in your response:
 
-A concise 2–3 sentence summary of what this file does and how it fits into the Go + Gin project.
+A concise 2–3 sentence summary of what this file does and how it fits into the Flutter project.
 
-If it's a Go file (.go):
+If it's a Dart file (.dart):
 
-Mention key structs, functions, interfaces, packages imported, and HTTP handlers or business logic implemented.
+Mention key classes, widgets, functions, mixins, packages imported, and UI components or business logic implemented.
 
-If it's a module file (.mod/.sum):
+If it's a configuration file (pubspec.yaml):
 
-Describe the dependencies, module name, and Go version requirements it manages.
+Describe the dependencies, Flutter SDK version, assets, and package configuration it manages.
 
-If it's a configuration file (.json/.yaml):
+If it's a platform-specific file (.gradle/.kt/.swift/.xml):
 
-Explain the application settings, database configuration, or deployment configuration it manages.
+Explain the platform configuration, native integrations, or build settings it manages.
 
-If it's a template file (.html/.tmpl):
+If it's an asset configuration file (.json):
 
-Describe the HTML structure, template variables, and rendering context it provides.
+Explain the app settings, localization data, or configuration parameters it manages.
+
+If it's a template file (.html):
+
+Describe the HTML structure, template variables, and web-specific rendering context it provides.
 
 If it's a styling file (.css/.scss):
 
-Describe the styling approach, component styles, or global styles it provides.
+Describe the styling approach, component styles, or global styles for web platform.
 
-List which other files or packages this file is directly coupled with, either through imports, struct usage, or function dependencies.
+List which other files or packages this file is directly coupled with, either through imports, widget usage, or function dependencies.
 
-Mention any external packages, Go standard library, or third-party libraries (e.g., gin-gonic/gin, gorm.io/gorm, github.com/joho/godotenv) used here.
+Mention any external packages, Flutter SDK, or third-party libraries (e.g., flutter/material.dart, provider, bloc, dio, shared_preferences) used here.
 
 Response Format:
 
 Return only the raw description text (no markdown, bullets, or headings).
 
-Do not include any code or formatting artifacts.
+Do not include any code or formatting artifacts
     """
 
     resp = genai.GenerativeModel("gemini-2.5-pro-preview-05-06").generate_content(
@@ -606,15 +721,15 @@ def generate_file_content(context: str, filepath: str, refined_prompt: str, tree
     file_type = os.path.splitext(filepath)[1]
     filename = os.path.basename(filepath)
     
-    prompt = f"""Generate the content of a Go + Gin project file.
+    prompt = f"""Generate the content of a Flutter project file.
 
 Details:
 
 File Name: {filename}
 
-File Type: {file_type} (e.g., Go, Mod, Sum, JSON, YAML, HTML, CSS, Template)
+File Type: {file_type} (e.g., Dart, YAML, JSON, XML, Gradle, Kotlin, Swift, HTML, CSS)
 
-Project Context: {context} (e.g., handlers/, models/, services/, middleware/, routes/, config/, templates/, static/)
+Project Context: {context} (e.g., lib/screens/, lib/widgets/, lib/models/, lib/services/, lib/providers/, lib/utils/, assets/, android/, ios/, web/)
 
 Project Idea: {refined_prompt}
 
@@ -622,79 +737,135 @@ Full Folder Structure: {tree}
 
 Requirements:
 
-Follow Go + Gin best practices relevant to the file type
+Follow Flutter and Dart best practices relevant to the file type
 
 Include only necessary imports or dependencies
 
 Use documentation comments and inline comments for clarity where applicable
 
-For Go files (.go):
-Use proper Go conventions with clear package declarations
+For Dart files (.dart):
 
-Include comprehensive struct definitions and method documentation
+Use proper Dart conventions with clear library declarations
 
-Add Go doc comments for exported functions and types
+Include comprehensive class definitions and method documentation
 
-Follow Go naming conventions and project structure
+Add dartdoc comments for public APIs and widgets
 
-Implement proper error handling and logging
+Follow Dart naming conventions and Flutter project structure
 
-Use Gin framework features and middleware appropriately
+Implement proper error handling and state management
 
-For Module files (.mod/.sum):
-Use proper Go module versioning and dependency management
+Use Flutter framework features and widgets appropriately
+
+Follow widget composition and lifecycle best practices
+
+For Configuration files (pubspec.yaml):
+
+Use proper Flutter SDK versioning and dependency management
 
 Include all necessary dependencies with appropriate versions
 
-Configure proper module name and Go version requirements
+Configure proper package name and Flutter version requirements
 
-Set up indirect dependencies and version constraints
+Set up assets, fonts, and platform-specific configurations
 
-Follow Go modules best practices for dependency resolution
+Follow Flutter package management best practices
 
-For Configuration files (.json/.yaml):
+For Platform-specific files (.gradle/.kt/.swift/.xml):
+
+Include all necessary platform configurations and permissions
+
+Configure proper build settings and native integrations
+
+Set up deployment and signing configurations
+
+Configure development and production environment separation
+
+Follow platform-specific best practices (Android/iOS)
+
+For Asset configuration files (.json):
+
 Include all necessary application settings and parameters
 
-Configure proper database connections and environment variables
+Configure proper localization and internationalization
 
-Set up logging, security, and performance configurations
+Set up app configuration and feature flags
 
-Configure deployment and runtime environment settings
+Configure API endpoints and environment variables
 
-Set up development and production environment separation
+Set up analytics and crash reporting configurations
 
-For Template files (.html/.tmpl):
-Write clean, semantic HTML with proper Go template syntax
+For Template files (.html):
 
-Use Go template functions and pipeline operations correctly
+Write clean, semantic HTML with proper Flutter web integration
 
-Include proper template inheritance and partial rendering
+Use modern HTML5 standards and accessibility guidelines
 
-Implement proper data binding and context usage
+Include proper meta tags and responsive design elements
 
-Follow HTML5 standards and accessibility guidelines
+Implement proper Flutter web app shell structure
+
+Follow progressive web app (PWA) best practices
 
 For Styling files (.css/.scss):
+
 Write modular, reusable styles with proper organization
 
 Follow modern CSS practices and naming conventions
 
-Ensure responsive design and cross-browser compatibility
+Ensure responsive design and cross-platform compatibility
 
 Use CSS custom properties and modern features
 
-Implement proper component scoping and global styles
+Implement proper component scoping for Flutter web
 
-For Handler files:
-Write clean, RESTful API handlers with proper validation
+For Screen/Widget files:
 
-Use Gin context and middleware appropriately
+Write clean, reusable widgets with proper state management
 
-Include comprehensive error handling and HTTP status codes
+Use Flutter context and navigation appropriately
 
-Add proper request/response serialization
+Include comprehensive error handling and loading states
 
-Follow REST API design principles and conventions
+Add proper widget lifecycle management
+
+Follow Material Design or Cupertino design principles
+
+For Service files:
+
+Write clean API integration with proper error handling
+
+Use proper HTTP client configuration and interceptors
+
+Include comprehensive data serialization and validation
+
+Add proper caching and offline support
+
+Follow repository pattern and dependency injection
+
+For Model files:
+
+Write clean data models with proper serialization
+
+Use proper Dart class conventions and immutability
+
+Include comprehensive validation and type safety
+
+Add proper JSON serialization annotations
+
+Follow data transfer object (DTO) patterns
+
+For Provider/State Management files:
+
+Write clean state management with proper separation of concerns
+
+Use appropriate state management solution (Provider, Bloc, Riverpod)
+
+Include comprehensive state transitions and error handling
+
+Add proper dependency injection and testing support
+
+Follow state management best practices and patterns
 
 Output:
 
@@ -837,15 +1008,15 @@ def dfs_tree_and_gen(
 
 def check_file_coupleness(metadata_dict, file_content, file_path, actual_dependencies):
     prompt = f"""
-    You are an expert Go + Gin code reviewer.
+    You are an expert Flutter code reviewer.
 
-You are reviewing the coupling accuracy of a Go + Gin file by comparing:
+You are reviewing the coupling accuracy of a Flutter file by comparing:
 
-The actual imports, dependencies, and logical usage in the file.
+The actual imports, dependencies, and logical usage in the file
 
-The declared couples_with list in the project's metadata.
+The declared couples_with list in the project's metadata
 
-The dependencies extracted via static analysis.
+The dependencies extracted via static analysis
 
 Your goal is to verify whether the declared couplings are complete, precise, and consistent with the file's true behavior.
 
@@ -860,19 +1031,20 @@ Declared Metadata Couplings (couples_with):
 Statically Detected Dependencies (from code analysis):
 {actual_dependencies}
 
-Instructions:
+Instructions
+Analyze the file's actual import statements, package usage, widget references, and cross-module dependencies.
 
-Analyze the file's actual import statements, package usage, struct references, and cross-module dependencies.
+For Dart files: Check import statements, widget usage, class references, function calls, and package dependencies.
 
-For Go files: Check import statements, struct usage, function calls, and package dependencies.
+For Configuration files (pubspec.yaml): Check dependency declarations, asset configurations, and Flutter SDK constraints.
 
-For Module files: Check require statements, replace directives, and version constraints.
+For Platform-specific files (.gradle/.kt/.swift/.xml): Check dependency declarations, native integrations, and build configurations.
 
-For Configuration files: Check dependency declarations, service configurations, and build settings.
+For Asset configuration files (.json): Check configuration references, localization keys, and external service integrations.
 
-For Template files: Check template includes, partial references, and asset dependencies.
+For Template files (.html): Check script includes, stylesheet references, and asset dependencies.
 
-For Styling files: Check @import statements, CSS custom properties, and component style dependencies.
+For Styling files (.css/.scss): Check @import statements, CSS custom properties, and component style dependencies.
 
 Compare that to the declared couplings in the metadata (couples_with).
 
@@ -881,32 +1053,29 @@ Then compare both with the dependencies inferred via static analysis (actual_dep
 If you find discrepancies, please describe the issue and suggest corrections.
 
 Determine if:
+All couplings in the code are properly captured in the metadata
 
-All couplings in the code are properly captured in the metadata.
+There are any incorrect, missing, or extra entries in the metadata
 
-There are any incorrect, missing, or extra entries in the metadata.
+Any syntactical or logical errors in the file that prevent it from compiling or running correctly
 
-Any syntactical or logical errors in the file that prevent it from compiling or running correctly.
-
+Return Format
 Return ONLY this exact JSON format:
-{{
+{
 "correctness": "correct" or "incorrect",
 "changes_needed": "clear explanation of what's missing, extra, or incorrect (empty string if everything is accurate)"
-}}
-
-Examples:
-
+}
+Examples
 Example 1 (Correct):
-{{
+{
 "correctness": "correct",
 "changes_needed": ""
-}}
-
+}
 Example 2 (Incorrect):
-{{
+{
 "correctness": "incorrect",
-"changes_needed": "The file imports github.com/gin-gonic/gin but gin-gonic/gin is missing in the declared metadata. Also, metadata lists gorm.io/gorm but it should be gorm.io/driver/postgres as the actual import. The file also uses User struct from models package but models/user.go is not captured in the metadata."
-}}
+"changes_needed": "The file imports package:flutter/material.dart but flutter/material.dart is missing in the declared metadata. Also, metadata lists provider package but it should be package:provider/provider.dart as the actual import. The file also uses UserModel class from models package but lib/models/user_model.dart is not captured in the metadata. The file references assets/images/logo.png but this asset dependency is not listed in couples_with."
+}
     """
     resp = genai.GenerativeModel("gemini-2.5-pro-preview-05-06").generate_content(
         contents = prompt
@@ -936,25 +1105,22 @@ def validate_imports_exist(file_path: str, content: str, project_files: set):
     invalid_imports = []
     file_ext = os.path.splitext(file_path)[1].lower()
     
-    if file_ext == '.go':
-        import_pattern = r'import\s+(?:\([^)]*\)|"([^"]+)")'
-        multi_import_pattern = r'import\s+\(\s*([^)]+)\s*\)'
-        struct_pattern = r'([A-Z][a-zA-Z0-9]*)\s*{'
-        interface_pattern = r'type\s+([A-Z][a-zA-Z0-9]*)\s+interface'
+    if file_ext == '.dart':
+        import_pattern = r'import\s+[\'"]([^\'"]+)[\'"]'
+        export_pattern = r'export\s+[\'"]([^\'"]+)[\'"]'
+        part_pattern = r'part\s+[\'"]([^\'"]+)[\'"]'
+        part_of_pattern = r'part\s+of\s+[\'"]([^\'"]+)[\'"]'
+        class_pattern = r'class\s+([A-Z][a-zA-Z0-9]*)'
+        widget_pattern = r'([A-Z][a-zA-Z0-9]*Widget|[A-Z][a-zA-Z0-9]*Screen|[A-Z][a-zA-Z0-9]*Page)'
         
         import_matches = re.findall(import_pattern, content)
-        multi_import_matches = re.findall(multi_import_pattern, content, re.DOTALL)
-        struct_matches = re.findall(struct_pattern, content)
-        interface_matches = re.findall(interface_pattern, content)
+        export_matches = re.findall(export_pattern, content)
+        part_matches = re.findall(part_pattern, content)
+        part_of_matches = re.findall(part_of_pattern, content)
+        class_matches = re.findall(class_pattern, content)
+        widget_matches = re.findall(widget_pattern, content)
         
-        all_imports = []
-        for imp in import_matches:
-            if imp:
-                all_imports.append(imp)
-        
-        for block in multi_import_matches:
-            imports = re.findall(r'"([^"]+)"', block)
-            all_imports.extend(imports)
+        all_imports = import_matches + export_matches + part_matches + part_of_matches
         
         for imp in all_imports:
             if imp.startswith('./') or imp.startswith('../'):
@@ -963,115 +1129,197 @@ def validate_imports_exist(file_path: str, content: str, project_files: set):
                 
                 potential_files = [
                     resolved_path,
-                    resolved_path + '.go',
-                    os.path.join(resolved_path, 'main.go'),
-                    os.path.join(resolved_path, 'handler.go'),
-                    os.path.join(resolved_path, 'model.go'),
-                    os.path.join(resolved_path, 'service.go')
+                    resolved_path + '.dart',
+                    os.path.join(resolved_path, 'main.dart'),
+                    os.path.join(resolved_path, 'index.dart')
                 ]
                 
                 if not any(pf in project_files for pf in potential_files):
                     invalid_imports.append(f"Local import '{imp}' in {file_path} does not exist")
             
-            elif not any(imp.startswith(external) for external in [
-                'fmt', 'log', 'net/http', 'os', 'strconv', 'time', 'context', 'database/sql',
-                'github.com/gin-gonic/gin', 'gorm.io/', 'github.com/'
-            ]):
-                go_mod_path = 'go.mod'
-                if go_mod_path in project_files:
+            elif imp.startswith('package:'):
+                package_name = imp.split('/')[0].replace('package:', '')
+                pubspec_path = 'pubspec.yaml'
+                if pubspec_path in project_files:
                     try:
-                        with open(go_mod_path, 'r') as f:
-                            mod_content = f.read()
-                        if imp not in mod_content:
-                            invalid_imports.append(f"Go package '{imp}' not found in go.mod dependencies")
+                        with open(pubspec_path, 'r') as f:
+                            pubspec_content = f.read()
+                        if package_name not in pubspec_content and not any(package_name.startswith(builtin) for builtin in [
+                            'flutter', 'dart'
+                        ]):
+                            invalid_imports.append(f"Dart package '{package_name}' not found in pubspec.yaml dependencies")
                     except:
                         pass
+            
+            elif not imp.startswith('dart:') and not any(imp.startswith(builtin) for builtin in [
+                'flutter/', 'package:flutter'
+            ]):
+                lib_path = f"lib/{imp}"
+                if lib_path + '.dart' not in project_files and lib_path not in project_files:
+                    invalid_imports.append(f"Local library '{imp}' not found in lib directory")
         
-        for struct in struct_matches:
-            struct_files = [
-                f"models/{struct.lower()}.go",
-                f"models/model.go",
-                f"handlers/{struct.lower()}.go"
+        for class_name in class_matches:
+            class_files = [
+                f"lib/models/{class_name.lower()}.dart",
+                f"lib/widgets/{class_name.lower()}.dart",
+                f"lib/screens/{class_name.lower()}.dart",
+                f"lib/services/{class_name.lower()}.dart"
             ]
-            if not any(sf in project_files for sf in struct_files):
-                invalid_imports.append(f"Struct '{struct}' in {file_path} may not exist in expected locations")
+            if not any(cf in project_files for cf in class_files):
+                invalid_imports.append(f"Class '{class_name}' in {file_path} may not exist in expected locations")
     
-    elif file_ext == '.mod':
-        require_pattern = r'require\s+([^\s]+)'
-        replace_pattern = r'replace\s+([^\s]+)'
+    elif file_ext == '.yaml' and 'pubspec' in file_path:
+        try:
+            import yaml
+            yaml_data = yaml.safe_load(content)
+            
+            if isinstance(yaml_data, dict):
+                if 'flutter' in yaml_data and 'assets' in yaml_data['flutter']:
+                    for asset in yaml_data['flutter']['assets']:
+                        if asset not in project_files and not asset.endswith('/'):
+                            invalid_imports.append(f"Asset '{asset}' declared in pubspec.yaml does not exist")
+                
+                if 'flutter' in yaml_data and 'fonts' in yaml_data['flutter']:
+                    for font_family in yaml_data['flutter']['fonts']:
+                        if 'fonts' in font_family:
+                            for font in font_family['fonts']:
+                                if 'asset' in font and font['asset'] not in project_files:
+                                    invalid_imports.append(f"Font asset '{font['asset']}' does not exist")
+                                    
+        except Exception:
+            pass
+    
+    elif file_ext == '.gradle':
+        implementation_pattern = r'implementation\s+[\'"]([^\'"]+)[\'"]'
+        api_pattern = r'api\s+[\'"]([^\'"]+)[\'"]'
+        plugin_pattern = r'apply\s+plugin:\s*[\'"]([^\'"]+)[\'"]'
         
-        require_matches = re.findall(require_pattern, content)
-        replace_matches = re.findall(replace_pattern, content)
+        implementation_matches = re.findall(implementation_pattern, content)
+        api_matches = re.findall(api_pattern, content)
+        plugin_matches = re.findall(plugin_pattern, content)
         
-        for req in require_matches:
-            if req.startswith('./') or req.startswith('../'):
-                file_dir = os.path.dirname(file_path)
-                resolved_path = os.path.normpath(os.path.join(file_dir, req))
-                mod_file = os.path.join(resolved_path, 'go.mod')
-                if mod_file not in project_files:
-                    invalid_imports.append(f"Local module '{req}' does not contain go.mod")
+        for dep in implementation_matches + api_matches:
+            if dep.startswith('project('):
+                project_path = dep.replace('project(', '').replace(')', '').replace('\'', '').replace('"', '')
+                if project_path.startswith(':'):
+                    project_path = project_path[1:]
+                gradle_file = f"{project_path}/build.gradle"
+                if gradle_file not in project_files:
+                    invalid_imports.append(f"Gradle project dependency '{project_path}' does not exist")
+    
+    elif file_ext == '.kt':
+        import_pattern = r'import\s+([^\s]+)'
+        class_pattern = r'class\s+([A-Z][a-zA-Z0-9]*)'
+        
+        import_matches = re.findall(import_pattern, content)
+        class_matches = re.findall(class_pattern, content)
+        
+        for imp in import_matches:
+            if imp.startswith('com.') and 'flutter' in imp:
+                continue
+            elif not any(imp.startswith(android_pkg) for android_pkg in [
+                'android.', 'androidx.', 'kotlin.', 'java.', 'javax.'
+            ]):
+                kt_file = imp.replace('.', '/') + '.kt'
+                if kt_file not in project_files:
+                    invalid_imports.append(f"Kotlin import '{imp}' may not exist")
+    
+    elif file_ext == '.swift':
+        import_pattern = r'import\s+([^\s]+)'
+        class_pattern = r'class\s+([A-Z][a-zA-Z0-9]*)'
+        
+        import_matches = re.findall(import_pattern, content)
+        class_matches = re.findall(class_pattern, content)
+        
+        for imp in import_matches:
+            if not any(imp.startswith(ios_framework) for ios_framework in [
+                'UIKit', 'Foundation', 'CoreData', 'Flutter'
+            ]):
+                swift_file = f"{imp}.swift"
+                if swift_file not in project_files:
+                    invalid_imports.append(f"Swift import '{imp}' may not exist")
+    
+    elif file_ext == '.xml':
+        if 'AndroidManifest.xml' in file_path:
+            activity_pattern = r'<activity[^>]+android:name=[\'"]([^\'"]+)[\'"]'
+            service_pattern = r'<service[^>]+android:name=[\'"]([^\'"]+)[\'"]'
+            receiver_pattern = r'<receiver[^>]+android:name=[\'"]([^\'"]+)[\'"]'
+            
+            activity_matches = re.findall(activity_pattern, content)
+            service_matches = re.findall(service_pattern, content)
+            receiver_matches = re.findall(receiver_pattern, content)
+            
+            for activity in activity_matches:
+                if activity.startswith('.'):
+                    kt_file = f"android/app/src/main/kotlin/{activity[1:].replace('.', '/')}.kt"
+                    if kt_file not in project_files:
+                        invalid_imports.append(f"Activity '{activity}' does not exist")
+        
+        drawable_pattern = r'@drawable/([a-zA-Z0-9_]+)'
+        string_pattern = r'@string/([a-zA-Z0-9_]+)'
+        color_pattern = r'@color/([a-zA-Z0-9_]+)'
+        
+        drawable_matches = re.findall(drawable_pattern, content)
+        string_matches = re.findall(string_pattern, content)
+        color_matches = re.findall(color_pattern, content)
+        
+        for drawable in drawable_matches:
+            drawable_files = [
+                f"android/app/src/main/res/drawable/{drawable}.xml",
+                f"android/app/src/main/res/drawable/{drawable}.png",
+                f"android/app/src/main/res/drawable/{drawable}.jpg"
+            ]
+            if not any(df in project_files for df in drawable_files):
+                invalid_imports.append(f"Drawable resource '{drawable}' does not exist")
     
     elif file_ext == '.json':
-        if 'package.json' in file_path:
-            try:
-                json_data = json.loads(content)
-                
-                if 'dependencies' in json_data:
-                    for dep_name in json_data['dependencies'].keys():
-                        if dep_name.startswith('file:'):
-                            file_path_dep = dep_name.replace('file:', '')
-                            if file_path_dep not in project_files:
-                                invalid_imports.append(f"Local file dependency '{file_path_dep}' does not exist")
-                                
-            except Exception:
-                pass
+        try:
+            json_data = json.loads(content)
+            
+            if 'dependencies' in json_data:
+                for dep_name in json_data['dependencies'].keys():
+                    if dep_name.startswith('file:'):
+                        file_path_dep = dep_name.replace('file:', '')
+                        if file_path_dep not in project_files:
+                            invalid_imports.append(f"Local file dependency '{file_path_dep}' does not exist")
+                            
+        except Exception:
+            pass
     
-    elif file_ext in ['.html', '.tmpl', '.tpl']:
-        template_pattern = r'{{\s*template\s+"([^"]+)"'
-        partial_pattern = r'{{\s*partial\s+"([^"]+)"'
+    elif file_ext in ['.html']:
         script_pattern = r'<script[^>]+src=[\'"]([^\'"]+)[\'"]'
         link_pattern = r'<link[^>]+href=[\'"]([^\'"]+)[\'"]'
+        img_pattern = r'<img[^>]+src=[\'"]([^\'"]+)[\'"]'
         
-        template_matches = re.findall(template_pattern, content)
-        partial_matches = re.findall(partial_pattern, content)
         script_matches = re.findall(script_pattern, content)
         link_matches = re.findall(link_pattern, content)
-        
-        for template in template_matches:
-            template_paths = [
-                f"templates/{template}",
-                f"templates/{template}.html",
-                f"templates/{template}.tmpl"
-            ]
-            if not any(tp in project_files for tp in template_paths):
-                invalid_imports.append(f"Template '{template}' in {file_path} does not exist")
-        
-        for partial in partial_matches:
-            partial_paths = [
-                f"templates/partials/{partial}",
-                f"templates/{partial}",
-                f"templates/partials/{partial}.html"
-            ]
-            if not any(pp in project_files for pp in partial_paths):
-                invalid_imports.append(f"Partial '{partial}' in {file_path} does not exist")
+        img_matches = re.findall(img_pattern, content)
         
         for script_src in script_matches:
             if not script_src.startswith('http') and not script_src.startswith('//'):
                 if script_src.startswith('/'):
-                    static_path = 'static' + script_src
-                    if static_path not in project_files:
-                        invalid_imports.append(f"Script source '{script_src}' in {file_path} does not exist in static folder")
+                    web_path = 'web' + script_src
+                    if web_path not in project_files:
+                        invalid_imports.append(f"Script source '{script_src}' does not exist in web folder")
                 elif script_src not in project_files:
-                    invalid_imports.append(f"Script source '{script_src}' in {file_path} does not exist")
+                    invalid_imports.append(f"Script source '{script_src}' does not exist")
         
         for link_href in link_matches:
             if not link_href.startswith('http') and not link_href.startswith('//'):
                 if link_href.startswith('/'):
-                    static_path = 'static' + link_href
-                    if static_path not in project_files:
-                        invalid_imports.append(f"Link href '{link_href}' in {file_path} does not exist in static folder")
+                    web_path = 'web' + link_href
+                    if web_path not in project_files:
+                        invalid_imports.append(f"Link href '{link_href}' does not exist in web folder")
                 elif link_href not in project_files:
-                    invalid_imports.append(f"Link href '{link_href}' in {file_path} does not exist")
+                    invalid_imports.append(f"Link href '{link_href}' does not exist")
+        
+        for img_src in img_matches:
+            if not img_src.startswith('http') and not img_src.startswith('data:'):
+                if img_src.startswith('/'):
+                    web_path = 'web' + img_src
+                    assets_path = 'assets' + img_src
+                    if web_path not in project_files and assets_path not in project_files:
+                        invalid_imports.append(f"Image source '{img_src}' does not exist")
     
     elif file_ext in ['.css', '.scss', '.sass', '.less']:
         import_pattern = r'@import\s+[\'"]([^\'"]+)[\'"]'
@@ -1098,16 +1346,15 @@ def validate_imports_exist(file_path: str, content: str, project_files: set):
                 ]
                 
                 if not any(pf in project_files for pf in potential_files):
-                    invalid_imports.append(f"Style import '{style_import}' in {file_path} does not exist")
+                    invalid_imports.append(f"Style import '{style_import}' does not exist")
         
         for url_ref in url_matches:
             if not url_ref.startswith('http') and not url_ref.startswith('data:') and not url_ref.startswith('//'):
                 if url_ref.startswith('/'):
-                    static_path = 'static' + url_ref
-                    if static_path not in project_files:
-                        invalid_imports.append(f"CSS URL reference '{url_ref}' in {file_path} does not exist in static folder")
-                elif url_ref not in project_files:
-                    invalid_imports.append(f"CSS URL reference '{url_ref}' in {file_path} does not exist")
+                    web_path = 'web' + url_ref
+                    assets_path = 'assets' + url_ref
+                    if web_path not in project_files and assets_path not in project_files:
+                        invalid_imports.append(f"CSS URL reference '{url_ref}' does not exist")
     
     elif file_ext in ['.yml', '.yaml']:
         try:
@@ -1188,9 +1435,9 @@ def get_project_files(metadata_dict, project_name) -> set:
                                                
 def refine_for_the_change_in_file(file_content, changes_needed):
     prompt = f"""
-    You are an expert Go + Gin developer.
+    You are an expert Flutter developer.
 
-Your task is to correct the following Go + Gin project file so that its imports, dependencies, and references properly match the declared couplings and dependency expectations, based on feedback from a static analysis and metadata validation.
+Your task is to correct the following Flutter project file so that its imports, dependencies, and references properly match the declared couplings and dependency expectations, based on feedback from a static analysis and metadata validation.
 
 Original File Content:
 {file_content}
@@ -1198,55 +1445,90 @@ Original File Content:
 Correction Feedback:
 {changes_needed}
 
-Requirements:
-
+Requirements
 Fix only the issues mentioned in the Correction Feedback — including:
 
-Missing or incorrect import statements and package references.
+Missing or incorrect import statements and package references:
 
-Imports of non-existent packages, handlers, models, or services — these should be removed.
+Dart import statements (import 'package:' or relative imports)
 
-Typographical errors in import statements, package names, or function names.
+Widget and class references from other files
 
-Syntactical errors in the file that prevent it from compiling correctly.
+Asset references and path corrections
 
-Missing package dependencies in go.mod files.
+Imports of non-existent packages, widgets, models, or services — these should be removed:
 
-Incorrect struct references or function usage.
+Remove imports to files that don't exist in the project
 
-Missing or incorrect Go standard library imports.
+Remove unused package dependencies
+
+Remove references to non-existent widgets or classes
+
+Typographical errors in import statements, package names, or function names:
+
+Correct misspelled package names
+
+Fix incorrect widget or class names
+
+Correct asset path typos
+
+Syntactical errors in the file that prevent it from compiling correctly:
+
+Fix Dart syntax errors
+
+Correct widget composition issues
+
+Fix state management syntax
+
+Missing package dependencies in pubspec.yaml files:
+
+Add missing dependencies to pubspec.yaml
+
+Correct version constraints
+
+Fix asset declarations
+
+Incorrect widget references or function usage:
+
+Fix widget constructor calls
+
+Correct method invocations
+
+Fix state management references
+
+Missing or incorrect Dart/Flutter imports:
+
+Add missing Flutter framework imports
+
+Correct Dart core library imports
+
+Fix third-party package imports
 
 Ensure that all imports and references are logically correct and semantically aligned with the metadata.
 
 If an import statement is missing, add it.
-
 If an import statement is incorrect, correct it.
-
 If an import statement is redundant or not used, remove it.
+If an import references a package/file that does not exist in the project, remove or replace it as appropriate.
 
-If an import references a package/module that does not exist in the project, remove or replace it as appropriate.
-
-For Go files, ensure proper package imports and struct usage.
-
-For Module files, ensure proper dependency declarations and versions.
-
-For Configuration files, ensure proper service configurations and settings.
-
-For Template files, ensure proper template syntax and asset references.
+For Dart files: ensure proper package imports and widget/class usage.
+For Configuration files (pubspec.yaml): ensure proper dependency declarations and versions.
+For Platform-specific files: ensure proper native configurations and settings.
+For Asset files: ensure proper asset references and paths.
 
 Do not:
+Add any new functionality unrelated to the correction
 
-Add any new functionality unrelated to the correction.
+Modify logic outside of the specified corrections
 
-Modify logic outside of the specified corrections.
+Introduce any new widgets, models, or services beyond what's mentioned
 
-Introduce any new handlers, models, or services beyond what's mentioned.
+Change the overall architecture or design patterns
 
-Maintain original indentation, code structure, and Go + Gin best practices.
+Maintain original indentation, code structure, and Flutter best practices.
 
-Output Format:
-
-Return the corrected file content as raw code (Go, Mod, YAML, JSON, HTML, etc.).
+Output Format
+Return the corrected file content as raw code (Dart, YAML, JSON, XML, Gradle, Kotlin, Swift, etc.).
 
 No markdown, no comments, no extra text.
 

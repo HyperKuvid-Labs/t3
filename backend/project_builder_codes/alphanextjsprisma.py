@@ -1743,107 +1743,57 @@ def extract_project_name(prompt: str) -> str:
         return match.group(1)
     else:
         return "default_project_name"
+    
+import sys
 
-prompt = """
-Build a Transport Management System Web Application with the following modules and functionalities:
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: python alphamern.py <output_dir> <prompt_file>")
+        sys.exit(1)
+    
+    output_dir = sys.argv[1]
+    prompt_file = sys.argv[2]
+    
+    with open(prompt_file, 'r') as f:
+        prompt = f.read()
+        
+    # prompt = sys.argv[1]
 
-1. Master Module:
-    Create a module to maintain details of unorganized transporters.
-    When a new transporter is added:
-    Auto-generate a unique login ID and password.
-    These credentials should allow the transporter to log in to their portal.
-2. Transporter Portal:
-    Once logged in, the transporter should be able to:
-    View all consignments assigned to them.
-    Update consignment status (e.g., In Transit, Delivered, Delayed, No Status).
-    Upload POD (Proof of Delivery) as an image.
-    Enter delivery details, including delivery date and remarks.
-3. Dashboard & Reporting (for Admin):
-    A graphical dashboard showing:
-        Total consignments
-        Delivered
-        In Transit
-        No Status
-    A count of consignments by status.
-    For delivered consignments:
-        Count how many were:
-            Delivered on time
-            1–3 days delayed
-            4–6 days delayed
-            More than 6 days delayed
-        Count of delivered consignments with and without POD images.
-    Provide the ability to:
-        View, filter, and export detailed reports.
-        Download data in Excel/PDF format.
-"""
-refined_prompt = refine_prompt(prompt)
-print(refined_prompt)
-project_name =extract_project_name(refined_prompt)
-# for line in lines:
-#     if "Project Name:" in line:
-#         project_name = line.split("Project Name:")[-1].strip()
-#         break
-#     else:
-#         project_name = prompt
+    # output_dir = f"generated_projects/{output_dir}"
 
-print(project_name)
-response = generate_folder_struct(refined_prompt)
-print(response)
-folder_tree = generate_tree(response, project_name)
-print(folder_tree.print_tree())
-# cont = response.strip().replace('```', '').strip()
-# lines = cont.split('\n')
-# if lines:
-#     project_name = lines[0].strip()
-#     print(f"Project Name: {project_name}")\
-dependency_analyzer = DependencyAnalyzer()
-json_file_name = "projects_metadata.json"
-metadata_dict = {project_name: []}
+    print("running django script...")
+    refined_prompt = refine_prompt(prompt)
+    project_name =extract_project_name(refined_prompt)
+    print(project_name)
+    response = generate_folder_struct(refined_prompt)
+    print(response)
+    folder_tree = generate_tree(response, output_dir)
+    print(folder_tree.print_tree())
+    dependency_analyzer = DependencyAnalyzer()
+    json_file_name = "projects_metadata.json"
+    metadata_dict = {project_name: []}
 
-output_dir = os.path.dirname(json_file_name)
-if output_dir:
-    os.makedirs(output_dir, exist_ok=True)
+    # output_dir = os.path.dirname(json_file_name)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+    dfs_tree_and_gen(root=folder_tree, refined_prompt=refined_prompt, tree_structure=response, project_name=output_dir, current_path="", parent_context="", json_file_name=json_file_name, metadata_dict=metadata_dict, dependency_analyzer=dependency_analyzer)
 
-# with open(json_file_name, 'w', encoding='utf-8') as f:
-#     json.dump(empty_data, f, indent=4)
+    dependency_analyzer.visualize_graph()
 
-# # # dfs_tree_and_gen(folder_tree, refined_prompt, response, "", "", json_file_name, project_name=project_name,)
-dfs_tree_and_gen(root=folder_tree, refined_prompt=refined_prompt, tree_structure=response, project_name=project_name, current_path="", parent_context="", json_file_name=json_file_name, metadata_dict=metadata_dict, dependency_analyzer=dependency_analyzer)
+    for entry in metadata_dict[project_name]:
+        path = entry["path"]
+        entry["couples_with"] = dependency_analyzer.get_dependencies(entry["path"])
 
-dependency_analyzer.visualize_graph()
-
-for entry in metadata_dict[project_name]:
-    path = entry["path"]
-    entry["couples_with"] = dependency_analyzer.get_dependencies(entry["path"])
-
-with open(json_file_name, 'w') as f:
-    json.dump(metadata_dict, f, indent=4)
+    with open(json_file_name, 'w') as f:
+        json.dump(metadata_dict, f, indent=4)
 
 
-dfs_feedback_loop(folder_tree, response, project_name, current_path="", metadata_dict=metadata_dict, dependency_analyzer=dependency_analyzer, is_top_level=True)
+    dfs_feedback_loop(folder_tree, response, project_name, current_path="", metadata_dict=metadata_dict, dependency_analyzer=dependency_analyzer, is_top_level=True)
 
-with open(json_file_name, 'w') as f:
-    json.dump(metadata_dict, f, indent=4)
+    with open(json_file_name, 'w') as f:
+        json.dump(metadata_dict, f, indent=4)
 
-# def dummy_check_json_resp():
-#     resp = """```json
-#     {
-#     "correctness": "correct",
-#     "changes_needed": ""
-#     }
-#     ```"""
-
-#     cleaned_response = resp.strip('`').replace('json\n', '').strip()
-#     data = json.loads(cleaned_response)
-#     correctness = data["correctness"]
-#     changes_needed = data["changes_needed"]
-#     return correctness, changes_needed
-
-# correctness, changes_needed = dummy_check_json_resp()
-# print(f"Correctness: {correctness}")
-# print(f"Changes Needed: {changes_needed}")
-print("Happa... done, pothum da")
-
-# with open("Event/Event/core/models.py", 'r') as f:
-#     content = f.read()
-# print(content)
+    print("Happa... done, pothum da")
+    
+if __name__ == "__main__":
+    main()

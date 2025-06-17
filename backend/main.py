@@ -1588,7 +1588,6 @@ async def get_conversations(current_user: User = Depends(get_current_user)):
             }
         )
         
-        # Transform the response to match your frontend expectations
         formatted_conversations = []
         for conv in conversations:
             formatted_conversations.append({
@@ -1628,7 +1627,7 @@ async def create_new_conversation(
         
         await prisma.user.update(
             where={"id": current_user.id},
-            data={"currentCoversationId": conversation.id}  # Note: Fix typo "Coversation" -> "Conversation"
+            data={"currentCoversationId": conversation.id} 
         )
 
         return {
@@ -1685,7 +1684,7 @@ STACK_SCRIPTS = {
     'svelte-kit': 'alphasvelte.py', #done
     'go-gin-stack': 'alphagogin.py', #done
     't3-stack': 'alphat3.py', #done
-    'flutter-firebase': 'alphaflutter.py'
+    'flutter-firebase': 'alphaflutter.py' 
 }
 
 async def process_project_generation(stack_id: str, project_id: str, email: str, enhanced_prompt: str):
