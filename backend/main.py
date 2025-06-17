@@ -2217,66 +2217,8 @@ async def join_temp_room(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to join room: {str(e)}")
-    
-@app.post("/temp-rooms/{room_id}/messages")
-async def send_message(
-    room_id: str,
-    message_data: SendMessageRequest,
-    current_user: User = Depends(get_current_user)
-):
-    try:
-        room = await prisma.temproom.find_first(
-            where={
-                "roomId": room_id,
-                "status": "active",
-                "expiryTime": {"gt": datetime.utcnow()}
-            }
-        )
-        
-        if not room:
-            raise HTTPException(status_code=404, detail="Room not found or expired")
-        
-        if current_user.email not in room.usersEmails:
-            raise HTTPException(status_code=403, detail="You are not a member of this room")
-        
-        message = await prisma.tempmessage.create(
-            data={
-                "messageId": str(uuid.uuid4()),
-                "roomId": room_id,
-                "userEmail": current_user.email,
-                "content": message_data.content,
-                "messageType": message_data.message_type,
-                "isAiGenerated": False
-            }
-        )
-        
-        if message_data.message_type == "user":
-            ai_response = await generate_ai_response(message_data.content, room_id)
-            
-            if ai_response:
-                await prisma.tempmessage.create(
-                    data={
-                        "messageId": str(uuid.uuid4()),
-                        "roomId": room_id,
-                        "userEmail": "ai",
-                        "content": ai_response,
-                        "messageType": "ai",
-                        "isAiGenerated": True,
-                        "aiModelUsed": "your-ai-model"
-                    }
-                )
-        
-        return {
-            "message_id": message.messageId,
-            "timestamp": message.timestamp,
-            "status": "sent"
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
 
+#need to check this
 @app.post("/temp-rooms/{room_id}/messages")
 async def send_message(
     room_id: str,

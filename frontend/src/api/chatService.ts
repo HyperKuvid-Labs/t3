@@ -300,6 +300,7 @@ export class TempRoomWebSocket {
     };
   }
 
+  //need to check
   sendMessage(message: any): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(message));
