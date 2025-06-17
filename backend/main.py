@@ -1770,22 +1770,22 @@ async def run_generation_script(script_path: str, output_dir: str, prompt: str):
         with open(prompt_file, 'w') as f:
             f.write(prompt)
         
-        result = subprocess.run(
-            ['python', script_path, output_dir, prompt_file],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=os.getcwd(),
-            text=True  
+        process = await asyncio.create_subprocess_exec(
+            'python', script_path, output_dir, prompt_file,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=os.getcwd()
         )
+        stdout, stderr = await process.communicate()
 
-        stdout = result.stdout
-        stderr = result.stderr
-        returncode = result.returncode
+        # stdout = result.stdout
+        # stderr = result.stderr
+        # returncode = result.returncode
         
         # stdout, stderr = await process.communicate()
         
-        if returncode != 0:
-            raise Exception(f"Script execution failed: {stderr.decode()}")
+        if process.returncode != 0:
+            raise Exception(f"Script execution failed: {stderr}")
             
         os.remove(prompt_file)
         
