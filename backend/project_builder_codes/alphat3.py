@@ -815,7 +815,7 @@ Example 1 (Correct):
 Example 2 (Incorrect):
 {{
 "correctness": "incorrect",
-"changes_needed": "The file imports import { useSession } from 'next-auth/react' but next-auth/react is missing in the declared metadata. Also, metadata lists @trpc/client but it should be @trpc/react-query as the actual import. The file also uses React.useState but this React built-in hook is not captured in the metadata."
+"changes_needed": "The file imports import { "useSession "} from 'next-auth/react' but next-auth/react is missing in the declared metadata. Also, metadata lists @trpc/client but it should be @trpc/react-query as the actual import. The file also uses React.useState but this React built-in hook is not captured in the metadata."
 }}
     """
     resp = genai.GenerativeModel("gemini-2.5-pro-preview-05-06").generate_content(
