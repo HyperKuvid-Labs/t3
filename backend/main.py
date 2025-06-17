@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, UploadFile, File, BackgroundTasks
+from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, UploadFile, File, BackgroundTasks, WebSocket, WebSocketDisconnect
 import requests
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
@@ -8,13 +8,13 @@ import string
 from tqdm import tqdm
 import subprocess
 from prisma import Prisma
-from prisma.models import User, Model, Conversation, QueryResp
+from prisma.models import User, Model, Conversation, QueryResp, TempMessage, TempRoom
 import asyncio
 from passlib.context import CryptContext
 from dotenv import load_dotenv
 import os
 import json
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, Field
 from fastapi.security import (
     OAuth2PasswordBearer,
     OAuth2PasswordRequestForm,
@@ -27,7 +27,7 @@ from starlette.responses import RedirectResponse
 from jose import jwt, JWTError
 from datetime import datetime, timedelta
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from typing import Optional, List
+from typing import Optional, List, Dict
 import bcrypt
 import logging
 import uuid
@@ -42,7 +42,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from email.mime.text import MIMEText
-from langchain_groq import ChatGroq
+import random
 
 oauth = OAuth()
 
@@ -124,12 +124,18 @@ async def load_models_in_db():
         print(f"Error seeding models: {e}")
         raise
 
+async def periodic_cleanup():
+    while True:
+        await clean_expired_rooms()
+        await asyncio.sleep(3600)  
+
 
 @app.on_event("startup")
 async def startup():
     await prisma.connect()
     await load_models_in_db()
     print("Successfully connected to Prisma database.")
+    asyncio.create_task(periodic_cleanup())
 
 
 @app.on_event("shutdown")
@@ -1971,4 +1977,494 @@ async def project_builder(data : ProjectBuilderReq, background_tasks: Background
         print(f"Error generating project: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate project")
 
+class TempRoomCreate(BaseModel):
+    room_name: Optional[str] = None
+    max_users: int = Field(default=10, ge=2, le=50)
+    expiry_hours: int = Field(default=24, ge=1, le=168)
+    ai_enabled: bool = Field(default=True)
 
+class TempRoomResponse(BaseModel):
+    room_id: str
+    room_code: str
+    room_name: Optional[str]
+    created_by: str
+    users_emails: List[str]
+    expiry_time: datetime
+    created_at: datetime
+    status: str
+    max_users: int
+    ai_enabled: bool
+
+class RoomInvite(BaseModel):
+    room_code: str
+    invite_emails: List[EmailStr]
+    custom_message: Optional[str] = None
+
+class JoinRoomRequest(BaseModel):
+    room_code: str
+    user_email: EmailStr
+
+class SendMessageRequest(BaseModel):
+    content: str
+    message_type: str = Field(default="user")
+
+class MessageResponse(BaseModel):
+    message_id: str
+    room_id: str
+    user_email: str
+    content: str
+    timestamp: datetime
+    message_type: str
+    is_ai_generated: bool
+
+def generate_room_code():
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+def generate_room_id():
+    return str(uuid.uuid4())
+
+async def send_inv_email(room_code, to_mail, inviter_email, custom_message = None):
+    try:
+        smtp_server = os.getenv('SMTP_SERVER', 'smtp.gmail.com')
+        smtp_port = int(os.getenv('SMTP_PORT', '587'))
+        sender_email = os.getenv('SENDER_EMAIL')
+        sender_password = os.getenv('SENDER_PASSWORD')
+
+        msg = MIMEMultipart()
+        msg['From'] = sender_email
+        msg['To'] = to_mail
+        msg['Subject'] = f"You're invited to join a chat room!"
+        
+        body = f"""
+        Hi there!
+        
+        {inviter_email} has invited you to join a temporary chat room.
+        
+        Room Code: {room_code}
+        
+        {f"Message: {custom_message}" if custom_message else ""}
+    
+        
+        This room will expire automatically, so join soon!
+        
+        Best regards,
+        Gideon
+        """
+        
+        msg.attach(MIMEText(body, 'plain'))
+        
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
+        text = msg.as_string()
+        server.sendmail(sender_email, to_mail, text)
+        server.quit()
+        
+        return True
+    except Exception as e:
+        print(f"Failed to send email to {to_mail}: {str(e)}")
+        return False
+
+async def clean_expired_rooms():
+    try:
+        expired_rooms = await prisma.temproom.find_many(
+            where={
+                "expiryTime" : {"lt": datetime.now()},
+                "status" : "active"
+            }
+        )
+
+        for room in expired_rooms:
+            await prisma.tempmessage.delete_many(
+                where={
+                    "roomId" : room.roomId
+                }
+            )
+
+            await prisma.temproom.delete(
+                where={
+                    "roomId" : room.id
+                }
+            )
+
+        print("cleaned the expired rooms...")
+    except Exception as e:
+        print(f"Failed to clean expired rooms: {str(e)}")
+
+@app.post("/temp-rooms/create")
+async def create_temp_room(
+    data : TempRoomCreate,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        room_id = generate_room_id()
+        room_code = generate_room_code()
+
+        while await prisma.temproom.find_first(where={"roomCode" : room_code}):
+            room_code = generate_room_code()
+
+        expiry_time = datetime.now() + timedelta(hours=data.expiry_hours)
+
+        room = await prisma.temproom.create(
+            data={
+                "roomId": room_id,
+                "roomCode": room_code,
+                "createdBy": current_user.email,
+                "usersEmails": [current_user.email], 
+                "expiryTime": expiry_time,
+                "maxUsers": data.max_users,
+                "roomName": data.room_name,
+                "status": "active"
+            }
+        )
+
+        return TempRoomResponse(
+            room_id=room.roomId,
+            room_code=room.roomCode,
+            room_name=room.roomName,
+            created_by=room.createdBy,
+            users_emails=room.usersEmails,
+            expiry_time=room.expiryTime,
+            created_at=room.createdAt,
+            status=room.status,
+            max_users=room.maxUsers,
+            ai_enabled=data.ai_enabled
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create room: {str(e)}")
+    
+@app.post("/room/invitation")
+async def send_room_invitation(
+    data : RoomInvite,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        room = await prisma.temproom.find_first(
+            where={
+                "roomCode" : data.room_code,
+                "status" : "active",
+                "expiryTime" : {"gt" : datetime.now()}
+            }
+        )
+
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found or expired")
+        
+        if current_user.email not in room.usersEmails:
+            raise HTTPException(status_code=403, detail="You must be a member to invite others")
+        
+        avail_slots = room.maxUsers - len(room.usersEmails)
+        if avail_slots <= 0:
+            raise HTTPException(status_code=400, detail="Room is full")
+        
+        new_invites = [email for email in data.invite_emails 
+                      if email not in room.usersEmails]
+
+        if not new_invites:
+            raise HTTPException(status_code=400, detail="All invited users are already in the room")
+        
+        new_invites = new_invites[:avail_slots]
+
+        for email in new_invites:
+            background_tasks.add_task(
+                send_inv_email,
+                email,
+                room.roomCode,
+                current_user.email,
+                data.custom_message
+            )
+        
+        return {
+            "message": f"Invitations sent to {len(new_invites)} users",
+            "invited_emails": new_invites,
+            "room_code": room.roomCode
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send invitations: {str(e)}")
+    
+@app.post("/temp-rooms/join")
+async def join_temp_room(
+    join_data: JoinRoomRequest,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        room = await prisma.temproom.find_first(
+            where={
+                "roomCode": join_data.room_code,
+                "status": "active",
+                "expiryTime": {"gt": datetime.utcnow()}
+            }
+        )
+        
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found or expired")
+        
+        if current_user.email in room.usersEmails:
+            return {"message": "You are already in this room", "room_id": room.roomId}
+        
+        if len(room.usersEmails) >= room.maxUsers:
+            raise HTTPException(status_code=400, detail="Room is full")
+        
+        updated_users = room.usersEmails + [current_user.email]
+        
+        await prisma.temproom.update(
+            where={"id": room.id},
+            data={"usersEmails": updated_users}
+        )
+        
+        await prisma.tempmessage.create(
+            data={
+                "messageId": str(uuid.uuid4()),
+                "roomId": room.roomId,
+                "userEmail": "system",
+                "content": f"{current_user.email} joined the room",
+                "messageType": "system",
+                "isAiGenerated": False
+            }
+        )
+        
+        return {
+            "message": "Successfully joined the room",
+            "room_id": room.roomId,
+            "room_name": room.roomName,
+            "users_count": len(updated_users)
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to join room: {str(e)}")
+    
+@app.post("/temp-rooms/{room_id}/messages")
+async def send_message(
+    room_id: str,
+    message_data: SendMessageRequest,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        room = await prisma.temproom.find_first(
+            where={
+                "roomId": room_id,
+                "status": "active",
+                "expiryTime": {"gt": datetime.utcnow()}
+            }
+        )
+        
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found or expired")
+        
+        if current_user.email not in room.usersEmails:
+            raise HTTPException(status_code=403, detail="You are not a member of this room")
+        
+        message = await prisma.tempmessage.create(
+            data={
+                "messageId": str(uuid.uuid4()),
+                "roomId": room_id,
+                "userEmail": current_user.email,
+                "content": message_data.content,
+                "messageType": message_data.message_type,
+                "isAiGenerated": False
+            }
+        )
+        
+        if room.aiEnabled and message_data.message_type == "user":
+            ai_response = await generate_ai_response(message_data.content, room_id)
+            
+            if ai_response:
+                await prisma.tempmessage.create(
+                    data={
+                        "messageId": str(uuid.uuid4()),
+                        "roomId": room_id,
+                        "userEmail": "ai",
+                        "content": ai_response,
+                        "messageType": "ai",
+                        "isAiGenerated": True,
+                        "aiModelUsed": "your-ai-model"
+                    }
+                )
+        
+        return {
+            "message_id": message.messageId,
+            "timestamp": message.timestamp,
+            "status": "sent"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
+
+@app.post("/temp-rooms/{room_id}/messages")
+async def send_message(
+    room_id: str,
+    message_data: SendMessageRequest,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        room = await prisma.temproom.find_first(
+            where={
+                "roomId": room_id,
+                "status": "active",
+                "expiryTime": {"gt": datetime.utcnow()}
+            }
+        )
+        
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found or expired")
+        
+        if current_user.email not in room.usersEmails:
+            raise HTTPException(status_code=403, detail="You are not a member of this room")
+        
+        message = await prisma.tempmessage.create(
+            data={
+                "messageId": str(uuid.uuid4()),
+                "roomId": room_id,
+                "userEmail": current_user.email,
+                "content": message_data.content,
+                "messageType": message_data.message_type,
+                "isAiGenerated": False
+            }
+        )
+        
+        if room.aiEnabled and message_data.message_type == "user":
+            ai_response = await generate_ai_response(message_data.content, room_id)
+            
+            if ai_response:
+                await prisma.tempmessage.create(
+                    data={
+                        "messageId": str(uuid.uuid4()),
+                        "roomId": room_id,
+                        "userEmail": "ai",
+                        "content": ai_response,
+                        "messageType": "ai",
+                        "isAiGenerated": True,
+                        "aiModelUsed": "your-ai-model"
+                    }
+                )
+        
+        return {
+            "message_id": message.messageId,
+            "timestamp": message.timestamp,
+            "status": "sent"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
+    
+@app.get("/temp-rooms/{room_id}/messages")
+async def get_room_messages(
+    room_id: str,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        room = await prisma.temproom.find_first(
+            where={
+                "roomId": room_id,
+                "status": "active",
+                "expiryTime": {"gt": datetime.utcnow()}
+            }
+        )
+        
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found or expired")
+        
+        if current_user.email not in room.usersEmails:
+            raise HTTPException(status_code=403, detail="You are not a member of this room")
+        
+        messages = await prisma.tempmessage.find_many(
+            where={"roomId": room_id},
+            order_by={"timestamp": "desc"},
+            take=limit,
+            skip=offset
+        )
+        
+        return {
+            "messages": [
+                MessageResponse(
+                    message_id=msg.messageId,
+                    room_id=msg.roomId,
+                    user_email=msg.userEmail,
+                    content=msg.content,
+                    timestamp=msg.timestamp,
+                    message_type=msg.messageType,
+                    is_ai_generated=msg.isAiGenerated
+                ) for msg in reversed(messages) 
+            ],
+            "total_count": len(messages),
+            "room_info": {
+                "room_name": room.roomName,
+                "users_count": len(room.usersEmails),
+                "expires_at": room.expiryTime
+            }
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get messages: {str(e)}")
+
+@app.get("/temp-rooms/{room_code}/info")
+async def get_room_info(room_code: str):
+    try:
+        room = await prisma.temproom.find_first(
+            where={
+                "roomCode": room_code,
+                "status": "active",
+                "expiryTime": {"gt": datetime.utcnow()}
+            }
+        )
+        
+        if not room:
+            raise HTTPException(status_code=404, detail="Room not found or expired")
+        
+        return {
+            "room_code": room.roomCode,
+            "room_name": room.roomName,
+            "created_by": room.createdBy,
+            "users_count": len(room.usersEmails),
+            "max_users": room.maxUsers,
+            "expires_at": room.expiryTime,
+            "ai_enabled": room.aiEnabled
+        }
+        
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get room info: {str(e)}")
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, websocket: WebSocket, room_id: str):
+        await websocket.accept()
+        if room_id not in self.active_connections:
+            self.active_connections[room_id] = []
+        self.active_connections[room_id].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, room_id: str):
+        if room_id in self.active_connections:
+            self.active_connections[room_id].remove(websocket)
+
+    async def broadcast_to_room(self, message: str, room_id: str):
+        if room_id in self.active_connections:
+            for connection in self.active_connections[room_id]:
+                try:
+                    await connection.send_text(message)
+                except:
+                    self.active_connections[room_id].remove(connection)
+
+manager = ConnectionManager()
+
+@app.websocket("/temp-rooms/{room_id}/ws")
+async def websocket_endpoint(websocket: WebSocket, room_id: str):
+    await manager.connect(websocket, room_id)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            await manager.broadcast_to_room(data, room_id)
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, room_id)

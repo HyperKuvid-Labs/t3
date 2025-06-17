@@ -25,6 +25,8 @@ model User {
   QueryResps           QueryResp[]
   currentConversation  Conversation?            @relation("CurrentConversation", fields: [currentCoversationId], references: [id])
   conversations        Conversation[]           @relation("UserConversations")
+  tempRoomsCreated TempRoom[]     @relation("TempRoomsCreated")
+  tempMessages     TempMessage[]  @relation("TempMessages")
 
   @@index([email])
   @@index([currentCoversationId])
@@ -132,6 +134,49 @@ model QueryResp {
   @@index([userId])
   @@index([conversationId])
   @@index([createdAt])
+}
+
+model TempRoom {
+  id          Int              @id @default(autoincrement())
+  roomId      String           @unique
+  roomCode    String           @unique
+  createdBy   String //the email of the creator
+  usersEmails String[]          
+  expiryTime  DateTime
+  createdAt   DateTime         @default(now())
+  status      TempRoomStatus   @default(active)
+  maxUsers    Int              @default(10)
+  roomName    String?
+  creator     User             @relation("TempRoomsCreated", fields: [createdBy], references: [email])
+  messages    TempMessage[]
+  
+  @@index([roomCode])
+  @@index([expiryTime])
+  @@index([status])
+  @@index([createdBy])
+}
+
+model TempMessage {
+  id            Int          @id @default(autoincrement())
+  messageId     String       @unique
+  roomId        String
+  userEmail     String       
+  content       String
+  timestamp     DateTime     @default(now())
+  messageType   String       @default("user")
+  isAiGenerated Boolean      @default(false)
+  aiModelUsed   String?
+  room          TempRoom     @relation(fields: [roomId], references: [roomId], onDelete: Cascade)
+  user          User         @relation("TempMessages", fields: [userEmail], references: [email])
+  
+  @@index([roomId])
+  @@index([userEmail])
+  @@index([timestamp])
+}
+
+enum TempRoomStatus {
+  active
+  expired
 }
 
 enum ModelType {
