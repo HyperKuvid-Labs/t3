@@ -1641,27 +1641,6 @@ async def get_message_branches(message_id: int):
         return JSONResponse(
             content={"message": "error fetching branches"}, status_code=500
         )
-
-
-class UserInvite(BaseModel):
-    email: str
-
-
-@app.post("/conversation/invite")
-async def invite_to_conversation_via_mail(
-    data: UserInvite,
-    current_user: User = Depends(get_current_user),
-):
-    user = await prisma.user.find_first(where={"email": data.email})
-
-    if not user:
-        return JSONResponse(content={"message": "user not found"}, status_code=404)
-
-    roomId = current_user.currentConversationId
-    if not roomId:
-        return JSONResponse(
-            content={"message": "conversation not found"}, status_code=404
-        )
     
 async def get_default_conversation(user_id: int) -> int:
     conversation = await prisma.conversation.find_first(
@@ -2135,7 +2114,7 @@ async def create_temp_room(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create room: {str(e)}")
     
-@app.post("/room/invitation")
+@app.post("/temp-rooms/invite")
 async def send_room_invitation(
     data : RoomInvite,
     background_tasks: BackgroundTasks,
@@ -2162,6 +2141,8 @@ async def send_room_invitation(
         
         new_invites = [email for email in data.invite_emails 
                       if email not in room.usersEmails]
+        
+        print(new_invites)
 
         if not new_invites:
             raise HTTPException(status_code=400, detail="All invited users are already in the room")
@@ -2171,8 +2152,8 @@ async def send_room_invitation(
         for email in new_invites:
             background_tasks.add_task(
                 send_inv_email,
-                email,
                 room.roomCode,
+                email,
                 current_user.email,
                 data.custom_message
             )
@@ -2220,7 +2201,7 @@ async def join_temp_room(
             data={
                 "messageId": str(uuid.uuid4()),
                 "roomId": room.roomId,
-                "userEmail": "system",
+                "userEmail": None,
                 "content": f"{current_user.email} joined the room",
                 "messageType": "system",
                 "isAiGenerated": False
@@ -2269,7 +2250,7 @@ async def send_message(
             }
         )
         
-        if room.aiEnabled and message_data.message_type == "user":
+        if message_data.message_type == "user":
             ai_response = await generate_ai_response(message_data.content, room_id)
             
             if ai_response:
@@ -2317,6 +2298,7 @@ async def send_message(
         if current_user.email not in room.usersEmails:
             raise HTTPException(status_code=403, detail="You are not a member of this room")
         
+        # Create user message
         message = await prisma.tempmessage.create(
             data={
                 "messageId": str(uuid.uuid4()),
@@ -2328,33 +2310,49 @@ async def send_message(
             }
         )
         
-        if room.aiEnabled and message_data.message_type == "user":
+        # Convert to dict and broadcast - THIS IS THE KEY PART
+        message_dict = message.model_dump()
+        # Convert datetime to string for JSON serialization
+        if 'timestamp' in message_dict:
+            message_dict['timestamp'] = message_dict['timestamp'].isoformat()
+        
+        await manager.broadcast_to_room(json.dumps(message_dict), room_id)
+        
+        # Handle AI response if needed
+        if message_data.message_type == "user":
             ai_response = await generate_ai_response(message_data.content, room_id)
             
             if ai_response:
-                await prisma.tempmessage.create(
+                ai_message = await prisma.tempmessage.create(
                     data={
                         "messageId": str(uuid.uuid4()),
                         "roomId": room_id,
-                        "userEmail": "ai",
+                        "userEmail": None,
                         "content": ai_response,
                         "messageType": "ai",
                         "isAiGenerated": True,
                         "aiModelUsed": "your-ai-model"
                     }
                 )
+                
+                ai_message_dict = ai_message.model_dump()
+                if 'timestamp' in ai_message_dict:
+                    ai_message_dict['timestamp'] = ai_message_dict['timestamp'].isoformat()
+                
+                await manager.broadcast_to_room(json.dumps(ai_message_dict), room_id)
         
         return {
             "message_id": message.messageId,
-            "timestamp": message.timestamp,
+            "timestamp": message.timestamp.isoformat(),
             "status": "sent"
         }
         
     except HTTPException:
         raise
     except Exception as e:
+        print(e)
         raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
-    
+
 @app.get("/temp-rooms/{room_id}/messages")
 async def get_room_messages(
     room_id: str,
@@ -2428,7 +2426,7 @@ async def get_room_info(room_code: str):
             "users_count": len(room.usersEmails),
             "max_users": room.maxUsers,
             "expires_at": room.expiryTime,
-            "ai_enabled": room.aiEnabled
+            # "ai_enabled": room.aiEnabled
         }
         
     

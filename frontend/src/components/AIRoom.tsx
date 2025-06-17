@@ -301,6 +301,8 @@ const AIRoom = ({ roomCode: initialRoomCode, mode = 'create' }: AIRoomProps) => 
 
     try {
       const emails = inviteEmails.split(',').map(email => email.trim()).filter(email => email);
+
+      console.log("Invitations to send:", emails);
       
       await sendRoomInvitations({
         room_code: roomCode,
