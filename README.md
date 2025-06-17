@@ -76,7 +76,7 @@ Create **temporary collaborative spaces** where friends can join and chat togeth
 
 ## 🔧 Project Builder
 
-An intelligent code generation tool that creates complete project scaffolds based on your requirements.
+An intelligent code generation tool that creates complete project scaffolds based on your requirements. Our architecture is inspired by Google DeepMind's recent "AlphaEvolve" paper, leveraging evolutionary algorithms and advanced AI reasoning to generate optimized code structures.
 
 ### Supported Tech Stacks:
 
