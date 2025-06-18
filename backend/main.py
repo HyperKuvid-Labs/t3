@@ -804,6 +804,9 @@ async def get_default_conversation(user_id: int) -> int:
 
     return conversation.id
 
+@app.get("/")
+async def root():
+    return {"message": "Welcome to Gideon API", "status": "running"}
 
 @app.post("/query/gemini_flash")
 async def query_gemini_flash(
