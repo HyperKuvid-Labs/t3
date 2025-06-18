@@ -38,7 +38,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         }
 
         // Verify token with backend
-        const response = await fetch('https://gideon-1.onrender.com/auth/me', {
+        const response = await fetch('https://ec2-16-16-146-220.eu-north-1.compute.amazonaws.com/auth/me', {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -115,7 +115,7 @@ const AuthenticatedLayout = ({ children }: { children: React.ReactNode }) => {
         const token = localStorage.getItem('authToken');
         if (!token) return;
 
-        const response = await fetch('https://gideon-1.onrender.com/auth/me', {
+        const response = await fetch('https://ec2-16-16-146-220.eu-north-1.compute.amazonaws.com/auth/me', {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
@@ -137,7 +137,7 @@ const AuthenticatedLayout = ({ children }: { children: React.ReactNode }) => {
   const handleLogout = async () => {
     try {
       // Call backend logout
-      await fetch('https://gideon-1.onrender.com/logout', {
+      await fetch('https://ec2-16-16-146-220.eu-north-1.compute.amazonaws.com/logout', {
         method: 'GET',
         credentials: 'include'
       });
@@ -203,7 +203,7 @@ const Index = () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-        const healthCheck = await fetch('https://gideon-1.onrender.com/health', {
+        const healthCheck = await fetch('https://ec2-16-16-146-220.eu-north-1.compute.amazonaws.com/health', {
           method: 'GET',
           signal: controller.signal
         }).catch(() => null);
@@ -214,7 +214,7 @@ const Index = () => {
           setHasError(true);
           toast({
             title: "Backend Unavailable",
-            description: "Please ensure the backend server is running on https://gideon-1.onrender.com",
+            description: "Please ensure the backend server is running on https://ec2-16-16-146-220.eu-north-1.compute.amazonaws.com",
             variant: "destructive"
           });
         }
@@ -258,7 +258,7 @@ const Index = () => {
           <AlertCircle className="w-16 h-16 text-red-400 mx-auto" />
           <h2 className="text-2xl font-bold text-white">Connection Error</h2>
           <p className="text-gray-300">
-            Unable to connect to the backend server. Please ensure it's running on https://gideon-1.onrender.com
+            Unable to connect to the backend server. Please ensure it's running on https://ec2-16-16-146-220.eu-north-1.compute.amazonaws.com
           </p>
           <motion.button
             onClick={() => window.location.reload()}

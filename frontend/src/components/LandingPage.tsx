@@ -95,7 +95,7 @@ const LandingPage = () => {
   };
 
   const handleGoogleAuth = () => {
-    window.location.href = 'https://gideon-1.onrender.com/login/google';
+    window.location.href = 'https://ec2-16-16-146-220.eu-north-1.compute.amazonaws.com/login/google';
   };
 
   if (isLoading) {

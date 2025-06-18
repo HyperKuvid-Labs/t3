@@ -29,7 +29,7 @@ const Login = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('https://gideon-1.onrender.com/login-jwt', {
+      const response = await fetch('https://ec2-16-16-146-220.eu-north-1.compute.amazonaws.com/login-jwt', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -66,7 +66,7 @@ const Login = () => {
   };
 
   const handleGoogleLogin = () => {
-    const popup = window.open('https://gideon-1.onrender.com/login/google', 'Google Login', 
+    const popup = window.open('https://ec2-16-16-146-220.eu-north-1.compute.amazonaws.com/login/google', 'Google Login', 
       'width=500,height=600,left=0,top=0');
 
     const handleMessage = (event: MessageEvent) => {
