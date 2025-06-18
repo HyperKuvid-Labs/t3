@@ -3,6 +3,7 @@ FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
+ENV TZ=Asia/Kolkata
 
 RUN apt-get update && apt-get install -y \
     python3 \
@@ -18,11 +19,11 @@ RUN ln -s /usr/bin/python3 /usr/bin/python
 
 WORKDIR /app
 
-COPY requirements.txt .
+COPY backend/requirements.txt ./
 
 RUN pip3 install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY backend/ ./
 
 RUN prisma generate
 RUN prisma py fetch
