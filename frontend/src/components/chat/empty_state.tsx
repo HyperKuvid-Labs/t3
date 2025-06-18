@@ -99,7 +99,7 @@ const EmptyState: React.FC<EmptyStateProps> = ({
               <h3 className="text-xl font-semibold text-red-300">Backend Offline</h3>
             </div>
             <p className="text-red-200/80 leading-relaxed">
-              Please ensure the backend server is running on localhost:8000
+              Please ensure the backend server is running on https://gideon-xnf9.onrender.com
             </p>
             <div className="mt-4 flex items-center justify-center space-x-2">
               <div className="w-2 h-2 bg-red-400 rounded-full animate-pulse"></div>

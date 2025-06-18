@@ -88,13 +88,7 @@ security = HTTPBearer(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:8080", 
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:8080",
-        "http://localhost:5173", 
-        "http://127.0.0.1:5173"   
+    allow_origins=["*"
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -1281,7 +1275,7 @@ async def get_current_user(current_user: User = Depends(get_current_user)):
 
 @app.get("/login/google")
 async def signup(request: Request):
-    redirect_uri = "http://localhost:8000/auth/google"
+    redirect_uri = "https://gideon-xnf9.onrender.com/auth/google"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
@@ -1314,10 +1308,10 @@ async def auth_google(request: Request):
         html_content = f"""
             <script>
                 if (window.opener) {{
-                    window.opener.postMessage({{ token: '{access_token}' }}, 'http://localhost:8080');
+                    window.opener.postMessage({{ token: '{access_token}' }}, 'https://gideon-eta.vercel.app');
                     window.close();
                 }} else {{
-                    window.location.href = 'http://localhost:8080/auth/google?token={access_token}';
+                    window.location.href = 'https://gideon-eta.vercel.app?token={access_token}';
                 }}
             </script>
         """
@@ -1405,7 +1399,7 @@ async def register(user_data: UserModel):
 @app.get("/logout")
 async def logout(request: Request):
     request.session.clear()
-    return RedirectResponse(url="http://localhost:8080")
+    return RedirectResponse(url="https://gideon-eta.vercel.app")
 
 @app.get("/conversations/{conversationId}/history")
 async def get_conversation_history(conversation_id : int, current_user = Depends(get_current_user)):

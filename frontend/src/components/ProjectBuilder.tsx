@@ -281,7 +281,7 @@ const AppBuilder = () => {
 
       console.log(appRequest);
   
-      const response = await fetch("http://localhost:8000/run_project_builder", {
+      const response = await fetch("https://gideon-xnf9.onrender.com/run_project_builder", {
         method: "POST",
         headers: {
           "Content-Type": "application/json"

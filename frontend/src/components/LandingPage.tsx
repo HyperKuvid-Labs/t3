@@ -95,7 +95,7 @@ const LandingPage = () => {
   };
 
   const handleGoogleAuth = () => {
-    window.location.href = 'http://localhost:8000/login/google';
+    window.location.href = 'https://gideon-xnf9.onrender.com/login/google';
   };
 
   if (isLoading) {
