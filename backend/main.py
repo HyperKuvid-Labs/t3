@@ -8,7 +8,7 @@ import string
 from tqdm import tqdm
 import subprocess
 from prisma import Prisma
-from prisma.models import User, Model, Conversation, QueryResp, TempMessage, TempRoom
+from prisma.models import User, Model, Conversation, QueryResp, TempMessage
 import asyncio
 from passlib.context import CryptContext
 from dotenv import load_dotenv
@@ -100,27 +100,33 @@ async def load_models_in_db():
         existing_models = await prisma.model.count()
         if existing_models > 0:
             print(f"Models already exist in database: {existing_models} records")
-            return
+            if existing_models < 8:
+                print("Incomplete seeding detected, clearing and re-seeding...")
+                await prisma.model.delete_many()
+            else:
+                return
 
+
+        from prisma.enums import ModelType, ModelNameOnline, ModelNameOllama
+        
         online_models = [
-            {"type": "online", "nameOnline": "gemini2_5_flash"},
-            {"type": "online", "nameOnline": "gemini2_5_pro"},
-            {"type": "online", "nameOnline": "deepseekv3"},
-            {"type": "online", "nameOnline": "claude4_0"},
+            {"type": ModelType.online, "nameOnline": ModelNameOnline.gemini2_5_flash},
+            {"type": ModelType.online, "nameOnline": ModelNameOnline.gemini2_5_pro},
+            {"type": ModelType.online, "nameOnline": ModelNameOnline.deepseekv3},
+            {"type": ModelType.online, "nameOnline": ModelNameOnline.claude4_0},
         ]
 
         ollama_models = [
-            {"type": "ollama", "name": "gemma3_27b"},
-            {"type": "ollama", "name": "llama3_3_70b"},
-            {"type": "ollama", "name": "deepseek_r1_70b"},
-            {"type": "ollama", "name": "phi4_14b"},
+            {"type": ModelType.ollama, "name": ModelNameOllama.gemma3_27b},
+            {"type": ModelType.ollama, "name": ModelNameOllama.llama3_3_70b},
+            {"type": ModelType.ollama, "name": ModelNameOllama.deepseek_r1_70b},
+            {"type": ModelType.ollama, "name": ModelNameOllama.phi4_14b},
         ]
 
         for model_data in online_models + ollama_models:
             await prisma.model.create(data=model_data)
-
+        
         print(f"Successfully seeded {len(online_models + ollama_models)} models")
-
     except Exception as e:
         print(f"Error seeding models: {e}")
         raise
@@ -743,25 +749,35 @@ async def welcome(current_user: User = Depends(get_current_user_flexible)):
 
 
 async def get_model_by_name(model_type: str, model_name: str) -> int:
-    # model = None
     try:
         if model_type == "online":
-            model = await prisma.model.find_first(where={"nameOnline": model_name})
-            # if(model)
+            model = await prisma.model.find_first(where={"nameOnline": model_name, "type": "online"})
         else:
-            model = await prisma.model.find_first(where={"name": model_name})
+            model = await prisma.model.find_first(where={"name": model_name, "type": "ollama"})
+            
+        if not model:
+            print(f"Model not found: {model_type} - {model_name}")
+            await load_models_in_db()
+            
+            if model_type == "online":
+                model = await prisma.model.find_first(where={"nameOnline": model_name, "type": "online"})
+            else:
+                model = await prisma.model.find_first(where={"name": model_name, "type": "ollama"})
+        
+        if not model:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail=f"Model '{model_name}' of type '{model_type}' not found"
+            )
+            
+        return model.modelId
     except Exception as e:
-        print(e)
-
-    print(model)
-
-    if not model:
-        print(model_name)
+        print(f"Error in get_model_by_name: {e}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Will add the model soon..."
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Database error: {str(e)}"
         )
 
-    return model.modelId
 
 async def get_default_conversation(user_id: int) -> int:
     conversation = await prisma.conversation.find_first(
@@ -1046,7 +1062,7 @@ async def query_deepseekv3(
     if "Error" in response:
         raise HTTPException(
             status_code=400,
-            detail="Error in API KEY"
+            detail="Error in API KEY or Deepseek API request"
         )
     
     existing_queries = await prisma.queryresp.count(
