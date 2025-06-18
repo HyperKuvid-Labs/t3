@@ -2,7 +2,7 @@ import axios, { AxiosResponse } from 'axios';
 import { toast } from '@/hooks/use-toast';
 import { FileProcessor, ProcessedFile } from './fileProcessing';
 
-const API_BASE_URL = 'https://gideon-xnf9.onrender.com';
+const API_BASE_URL = 'https://gideon-1.onrender.com';
 
 axios.defaults.baseURL = API_BASE_URL;
 axios.defaults.withCredentials = true;

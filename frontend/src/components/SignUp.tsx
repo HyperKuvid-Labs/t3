@@ -64,7 +64,7 @@ const Signup = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('https://gideon-xnf9.onrender.com/register', {
+      const response = await fetch('https://gideon-1.onrender.com/register', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -104,7 +104,7 @@ const Signup = () => {
 
   const handleGoogleSignup = () => {
     // Redirect to Google OAuth endpoint
-    window.location.href = 'https://gideon-xnf9.onrender.com/login/google';
+    window.location.href = 'https://gideon-1.onrender.com/login/google';
   };
 
   const getPasswordStrengthColor = () => {

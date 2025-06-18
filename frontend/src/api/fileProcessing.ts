@@ -45,7 +45,7 @@ export class FileProcessor {
     enableOCR: true,
     enableImageAnalysis: false,
     maxFileSize: 50 * 1024 * 1024, // 50MB
-    backendUrl: 'https://gideon-xnf9.onrender.com', // Your Python backend URL
+    backendUrl: 'https://gideon-1.onrender.com', // Your Python backend URL
     supportedFormats: [
       'application/pdf',
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

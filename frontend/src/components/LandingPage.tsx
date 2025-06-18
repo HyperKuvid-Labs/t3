@@ -95,7 +95,7 @@ const LandingPage = () => {
   };
 
   const handleGoogleAuth = () => {
-    window.location.href = 'https://gideon-xnf9.onrender.com/login/google';
+    window.location.href = 'https://gideon-1.onrender.com/login/google';
   };
 
   if (isLoading) {
@@ -176,7 +176,7 @@ const LandingPage = () => {
             <Sparkles className="w-6 h-6 text-white" />
           </div>
           <span className="text-2xl font-bold bg-gradient-to-r from-white to-purple-200 bg-clip-text text-transparent">
-            Gidvion
+            Gideon
           </span>
         </motion.div>
 
@@ -282,7 +282,7 @@ const LandingPage = () => {
                 backgroundSize: '200% 200%'
               }}
             >
-              Gidvion
+              Gideon
             </motion.span>
           </motion.h1>
 
@@ -525,7 +525,7 @@ const LandingPage = () => {
             >
               {isAuthenticated 
                 ? 'Continue exploring the power of AI with advanced chat features and collaborative tools.'
-                : 'Join thousands of developers and creators who are already building the future with Gidvion.'
+                : 'Join thousands of developers and creators who are already building the future with Gideon.'
               }
             </motion.p>
             

@@ -1289,7 +1289,7 @@ async def get_current_user(current_user: User = Depends(get_current_user)):
 
 @app.get("/login/google")
 async def signup(request: Request):
-    redirect_uri = "https://gideon-xnf9.onrender.com/auth/google"
+    redirect_uri = "https://gideon-1.onrender.com/auth/google"
     return await oauth.google.authorize_redirect(request, redirect_uri)
 
 
