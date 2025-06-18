@@ -117,10 +117,10 @@ const modelEndpoints = {
   'gemini-2.5-pro': '/query/gemini_pro',
   'claude-4.0-sonnet': '/query/claude_sonnet',
   'deepseek-v3': '/query/deepseekv3',
-  'ollama-gemma3': '/query/ollama_gemma3',
-  'ollama-llama3': '/query/ollama_llama3',
-  'ollama-deepseek': '/query/ollama_deepseek',
-  'ollama-phi': '/query/ollama_phi'
+  'gemma3_27b': '/query/ollama_gemma3',
+  'llama3_3_70b': '/query/ollama_llama3',
+  'deepseek_r1_70b': '/query/ollama_deepseek',
+  'phi4_14b': '/query/ollama_phi'
 } as const;
 
 export type ModelType = keyof typeof modelEndpoints;
@@ -165,7 +165,7 @@ export async function sendQueryToBackend(
     throw new Error('Query cannot be empty');
   }
 
-  let apiKey = null;
+  let apiKey = "";
   if (model.includes('claude')) {
     apiKey = getApiKey('anthropic');
     if (!apiKey) {

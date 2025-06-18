@@ -108,16 +108,16 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
             }`}
           >
             <span className="text-sm font-semibold text-white">
-              {message.sender === "user" ? "You" : "AI Assistant"}
+              {message.sender === "user" ? "You" : "Gideon"}
             </span>
-            {message.model && (
+            {/* {message.model && (
               <Badge
                 variant="outline"
                 className="border-purple-500/30 text-purple-400 text-xs bg-purple-500/10"
               >
                 {getModelDisplayName(message.model)}
               </Badge>
-            )}
+            )} */}
             {message.emotion && (
               <Badge
                 variant="outline"
