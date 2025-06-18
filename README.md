@@ -1,6 +1,6 @@
 # GIDEON
 
-> An advanced LLM aggregator with emotional intelligence and collaborative features - Built for the T3 Chat Cloneathon
+> An advanced LLM aggregator with emotional intelligence and creative features - Built for the T3 Chat Cloneathon
 
 ## 🏆 Hackathon Submission
 
@@ -10,7 +10,7 @@ This project was created for the **T3 Chat Cloneathon** - a hackathon focused on
 
 ## 🚀 Overview
 
-Gideon is a comprehensive AI chat platform that combines multiple language models with unique features like emotion tokens, collaborative AI rooms, and an intelligent project builder. It offers both cloud-based and local inference options for optimal performance and privacy.
+Gideon is a comprehensive AI chat platform that combines multiple language models with unique features like emotion tokens, AI-powered image generation, and an intelligent project builder. It offers both cloud-based and local inference options for optimal performance and privacy.
 
 ## 🛠️ Tech Stack
 
@@ -61,18 +61,25 @@ Each emotion token influences the AI's response tone and style, making conversat
 ### 3. 🔍 Web Search Integration
 Real-time web search capabilities to enhance AI responses with current information.
 
-## 🏠 AI Rooms
+## 🎨 Image Generation Studio
 
-Create **temporary collaborative spaces** where friends can join and chat together with AI models!
+Transform your imagination into stunning visuals with AI-powered image generation!
 
 ### Features:
-- **Email Invitations** - Send invite links via email
-- **Up to 4 participants** - Perfect for small team collaborations
-- **Local Models Only** - Optimized for privacy and speed
-- **Real-time Chat** - Seamless communication between participants and AI
-- **No File Attachments** - Streamlined experience focused on conversation
+- **Hyper-Realistic Generation** - Create photorealistic images with advanced AI models
+- **Style Suggestions** - Choose from 20+ predefined styles including:
+  - Photorealistic portrait, Digital art, Oil painting, Watercolor
+  - Cyberpunk aesthetic, Minimalist design, Vintage photography
+  - Abstract expressionism, Anime style, Concept art
+  - Surreal landscape, Street photography, Macro photography
+  - Architectural visualization, Fantasy illustration, Retro futurism
+  - Hyperrealistic, Impressionist, Pop art, Noir style
+  - Steampunk, Art nouveau, Bauhaus design
+- **Session-Based Storage** - Generated images persist only during your current session
+- **Instant Download** - Download your creations in high quality
+- **Navigation Reset** - Images clear when switching to other sections (Chat/Project Builder)
 
-*Note: AI Rooms use local models exclusively for enhanced privacy and performance.*
+*Perfect for creative projects, concept visualization, and artistic exploration!*
 
 ## 🔧 Project Builder
 
@@ -132,7 +139,7 @@ and more....
 
 ✅ **Open Source**: MIT License with full GitHub availability  
 ✅ **Web Application**: Easy testing and deployment  
-✅ **Creative Features**: Unique emotion tokens and AI rooms  
+✅ **Creative Features**: Unique emotion tokens and AI image generation  
 ✅ **Multiple LLM Support**: Both online and local model integration  
 ✅ **File Upload Support**: PDF processing capabilities  
 
@@ -140,7 +147,7 @@ and more....
 
 ```
 # Clone the repository
-git clone https://github.com/HyperKuvid-Labs/t3
+git clone https://github.com/Mantissagithub/gideon
 
 # Install frontend dependencies
 cd frontend
@@ -155,7 +162,7 @@ cp .env.example .env
 
 # Start the development servers
 npm run dev  # Frontend
-python main.py  # Backend
+uvicorn main:app --reload  # Backend
 ```
 
 ## 📝 License
@@ -166,4 +173,4 @@ This project is open source and available under the [MIT License](LICENSE).
 
 **Built with ❤️ for the T3 Chat Cloneathon**
 
-*Gideon - Where AI meets emotion, collaboration, and creativity.*
+*Gideon - Where AI meets emotion, creativity, and visual imagination.*
