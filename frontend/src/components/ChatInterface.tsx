@@ -240,11 +240,19 @@ const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
       // Enhanced entrance animations
       gsap
         .timeline()
-        .from(".chat-header", {
-          y: -100,
+        .set(".chat-input", { 
+          position: "sticky",
+          bottom: 0,
+          clearProps: "transform" // Clear transform after animation
+        })
+        .from(".chat-input", {
+          y: 100,
           opacity: 0,
-          duration: 1.2,
-          ease: "power3.out",
+          duration: 0.8,
+          ease: "backOut",
+          onComplete: () => {
+            gsap.set(".chat-input", { clearProps: "transform" });
+          }
         })
         .from(
           ".chat-sidebar",
@@ -272,7 +280,7 @@ const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
             y: 100,
             opacity: 0,
             duration: 0.8,
-            ease: "back.out(1.7)",
+            ease: "backOut",
           },
           "-=0.4"
         );
@@ -565,59 +573,73 @@ const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
   };
 
   const switchConversation = async (conversationId: number) => {
-    try {
-        setCurrentConversationId(conversationId);
+  try {
+    setCurrentConversationId(conversationId);
+    
+    // Switch to chat tab when selecting a conversation
+    setActiveTab('chat');
+    
+    const queries = await getConversationWithId(conversationId);
+    
+    // Transform and load messages
+    const transformedMessages = queries.map((query: any) => ({
+      id: query.id.toString(),
+      content: query.result,
+      sender: "ai" as const,
+      timestamp: new Date(query.createdAt),
+      model: query.ModelUsed?.name || "AI",
+      conversationId: query.conversationId
+    }));
 
-        const queries = await getConversationWithId(conversationId); // ✅ Direct assignment
+    const queryMessages = queries.map((query: any) => ({
+      id: `q-${query.id}`,
+      content: query.query,
+      sender: "user" as const,
+      timestamp: new Date(query.createdAt),
+      conversationId: query.conversationId
+    }));
 
-        const transformedMessages = queries.map((query: any) => ({
-            id: query.id.toString(),
-            content: query.result, 
-            sender: "ai" as const,
-            timestamp: new Date(query.createdAt),
-            model: query.ModelUsed?.name || "AI",
-            conversationId: query.conversationId
-        }));
-        
-        const queryMessages = queries.map((query: any) => ({
-            id: `q-${query.id}`,
-            content: query.query, 
-            sender: "user" as const,
-            timestamp: new Date(query.createdAt),
-            conversationId: query.conversationId
-        }));
-        
-        const allMessages = [...queryMessages, ...transformedMessages]
-            .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
-        
-        setMessages(allMessages);
-    } catch (error) {
-        console.error("Failed to switch conversation:", error);
-    }
+    const allMessages = [...queryMessages, ...transformedMessages]
+      .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
+
+    setMessages(allMessages);
+    
+    toast({
+      title: "Conversation loaded",
+      description: `Switched to ${conversations.find(c => c.id === conversationId)?.room_name || 'conversation'}`,
+    });
+    
+  } catch (error) {
+    console.error("Failed to switch conversation:", error);
+    toast({
+      title: "Error",
+      description: "Failed to load conversation",
+      variant: "destructive",
+    });
+  }
 };
 
-  const createNewConversation = async () => {
-    try {
-      const name = `New Chat ${new Date().toLocaleString()}`;
-      const newConvo = await newConversation(name, selectedModel);
-
-      setCurrentConversationId(newConvo.conversation_id);
-
-      setMessages([]);  
-      await loadConversations(); 
-
-      toast({
-        title: "New conversation created",
-        description: "Ready to start chatting!",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to create new conversation",
-        variant: "destructive",
-      });
-    }
-  };
+ const createNewConversation = async () => {
+  try {
+    const name = `New Chat ${new Date().toLocaleString()}`;
+    const newConvo = await newConversation(name, selectedModel);
+    setCurrentConversationId(newConvo.conversation_id);
+    setMessages([]); // Clear messages for new chat
+    setActiveTab('chat'); // Switch to chat tab
+    await loadConversations();
+    toast({
+      title: "New conversation created",
+      description: "Ready to start chatting!",
+    });
+  } catch (error) {
+    console.error("Failed to create new conversation:", error);
+    toast({
+      title: "Error",
+      description: "Failed to create new conversation",
+      variant: "destructive",
+    });
+  }
+};
 
   const deleteConversation = async (conversationId: number) => {
     try {
@@ -669,7 +691,7 @@ const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
   return (
     <div
       ref={containerRef}
-      className="flex h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden"
+      className="flex h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 relative overflow-hidden mt-2"
     >
       {/* Conversation Sidebar */}
       {/* <ConversationSidebar
@@ -691,7 +713,7 @@ const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
       /> */}
 
       {/* Main Chat Container */}
-      <div className="flex-1 flex flex-col relative">
+      <div className="flex-1 flex flex-col relative mb-4">
         {/* Chat Header */}
         <ChatHeader
           conversations={conversations}
@@ -721,8 +743,8 @@ const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
           height: "calc(100vh - 320px)",
         }}
       >
-        <div className="max-w-6xl mx-auto p-6">
-          <AnimatePresence mode="wait">
+        <div className="max-w-6xl mx-auto p-6 mb-4">
+          <AnimatePresence mode="sync">
             {activeTab === 'chat' && (
               <motion.div
                 key="chat-content"
@@ -794,14 +816,14 @@ const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.3 }}
               >
-                <HistoryView 
-                  conversations={conversations}
-                  currentConversationId={currentConversationId}
-                  onCreateNew={createNewConversation}
-                  onSwitchConversation={switchConversation}
-                  onDeleteConversation={deleteConversation}
-                  onTabChange={onTabChange} 
-                />
+                 <HistoryView
+                      conversations={conversations}
+                      currentConversationId={currentConversationId}
+                      onSwitchConversation={switchConversation}
+                      onDeleteConversation={deleteConversation}
+                      onCreateNew={createNewConversation}
+                      onTabChange={setActiveTab}
+                    />
                 </motion.div>
             )}
           </AnimatePresence>

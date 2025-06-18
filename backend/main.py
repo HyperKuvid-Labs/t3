@@ -3,12 +3,12 @@ import requests
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, HTMLResponse
 import uvicorn
-import google.generativeai as genai
+import google.generativeai as genais
 import string
 from tqdm import tqdm
 import subprocess
 from prisma import Prisma
-from prisma.models import User, Model, Conversation, QueryResp, TempMessage
+from prisma.models import User, Model, Conversation, QueryResp, TempMessage, ImageGeneration
 import asyncio
 from passlib.context import CryptContext
 from dotenv import load_dotenv
@@ -44,6 +44,12 @@ from email import encoders
 from email.mime.text import MIMEText
 import random
 from openai import OpenAI
+import base64
+from PIL import Image
+from io import BytesIO
+from google import genai
+from google.genai import types
+from fastapi.staticfiles import StaticFiles
 
 oauth = OAuth()
 
@@ -94,6 +100,8 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 async def load_models_in_db():
     try:
@@ -191,7 +199,7 @@ async def shutdown():
 
 GOOGLE_API_KEY = os.getenv("GEMINI_API_KEY")
 
-genai.configure(api_key="AIzaSyAxlaAthy3YF2Ul15VdgCwPhSoOyGK2hWk")
+genais.configure(api_key="AIzaSyAxlaAthy3YF2Ul15VdgCwPhSoOyGK2hWk")
 
 # client = anthropic.Anthropic(CLAUDE_API_KEY)
 
@@ -307,7 +315,7 @@ def gemini_flash_resp(query: str, emotion: str = "", previous_context : str = ""
             "Use emotional intelligence in your response."
         )
 
-    model = genai.GenerativeModel("gemini-2.5-flash-preview-05-20")
+    model = genais.GenerativeModel("gemini-2.5-flash-preview-05-20")
     response = model.generate_content(prompt)
 
     return response.text
@@ -339,7 +347,7 @@ def gemini_pro_resp(query: str, emotion: str, previous_context : str, search_con
             "Use emotional intelligence in your response."
         )
 
-    resp = genai.GenerativeModel("gemini-2.5-pro-preview-05-06").generate_content(
+    resp = genais.GenerativeModel("gemini-2.5-pro-preview-05-06").generate_content(
         contents=prompt
     )
 
@@ -2702,3 +2710,66 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
             await manager.broadcast_to_room(data, room_id)
     except WebSocketDisconnect:
         manager.disconnect(websocket, room_id)
+
+class ImageGenerationModel(BaseModel):
+    prompt: str
+
+@app.post("/generate-images")
+async def generate_images(
+    data: ImageGenerationModel, 
+    current_user: User = Depends(get_current_user)
+):
+    try:
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        
+        response = client.models.generate_images(
+            model='imagen-3.0-generate-002',
+            prompt=data.prompt,
+            config=types.GenerateImagesConfig(
+                number_of_images=4,
+            )
+        )
+        
+        images_base64 = []
+        image_urls = []
+        
+        for i, generated_image in enumerate(response.generated_images):
+            image = Image.open(BytesIO(generated_image.image.image_bytes))
+            
+            buffer = BytesIO()
+            image.save(buffer, format="PNG")
+            img_base64 = base64.b64encode(buffer.getvalue()).decode()
+            image_data_url = f"data:image/png;base64,{img_base64}"
+            images_base64.append(image_data_url)
+            
+            import uuid
+            filename = f"generated_{uuid.uuid4().hex}_{i+1}.png"
+            filepath = f"static/images/{filename}"
+            
+            import os
+            os.makedirs("static/images", exist_ok=True)
+            image.save(filepath, "PNG")
+            
+            image_urls.append(f"/static/images/{filename}")
+        
+        generation_record = await prisma.imagegeneration.create(
+            data={
+                "prompt": data.prompt,
+                "imageUrls": image_urls,
+                "userId": current_user.id,
+                "createdAt": datetime.now()
+            }
+        )
+        
+        return {
+            "images": images_base64,
+            "prompt": data.prompt,
+            "generation_id": generation_record.id,
+            "image_urls": image_urls
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Image generation failed: {str(e)}"
+        )

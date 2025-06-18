@@ -120,7 +120,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
             </motion.div>
 
             {/* Quick Actions */}
-            <motion.div
+            {/* <motion.div
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
@@ -133,7 +133,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
               >
                 <Sparkles className="w-4 h-4 text-yellow-400" />
               </Button>
-            </motion.div>
+            </motion.div> */}
           </div>
 
           {/* Text Input */}

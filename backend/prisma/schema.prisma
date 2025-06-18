@@ -21,6 +21,7 @@ model User {
   lastSeen             DateTime                 @default(now())
   receivedInvitations  ConversationInvitation[] @relation("InvitationsReceived")
   sentInvitations      ConversationInvitation[] @relation("InvitationsSent")
+  imageGenerations     ImageGeneration[]        @relation("UserImageGenerations")
   messages             Message[]                @relation("MessageAuthor")
   QueryResps           QueryResp[]
   tempMessages         TempMessage[]            @relation("TempMessages")
@@ -172,6 +173,18 @@ model TempMessage {
   @@index([roomId])
   @@index([userEmail])
   @@index([timestamp])
+}
+
+model ImageGeneration {
+  id        Int      @id @default(autoincrement())
+  prompt    String
+  imageUrls String[] @default([])
+  userId    Int
+  createdAt DateTime @default(now())
+  user      User     @relation("UserImageGenerations", fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
 }
 
 enum TempRoomStatus {

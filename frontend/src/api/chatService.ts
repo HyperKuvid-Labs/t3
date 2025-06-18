@@ -126,9 +126,8 @@ const modelEndpoints = {
 export type ModelType = keyof typeof modelEndpoints;
 
 const getApiKey = (provider: string): string | null => {
-  return localStorage.getItem(`apiKey_${provider.toLowerCase()}`);
+  return sessionStorage.getItem(`apiKey_${provider.toLowerCase()}`);
 };
-
 export async function sendQueryToBackend(
   query: string,
   previous_context: string, 
@@ -412,5 +411,16 @@ export async function getConversationWithId(conversationId: number) {
     return resp.data;
   } catch (error) {
     throw new Error('Failed to get conversation');
+  }
+}
+
+export async function generateImage(prompt : string){
+  try {
+    const resp = await axios.post('/generate-images', {
+      prompt: prompt
+    });
+    return resp.data;
+  } catch (error) {
+    throw new Error('Failed to generate image');
   }
 }

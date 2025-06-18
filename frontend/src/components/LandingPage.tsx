@@ -336,7 +336,7 @@ const LandingPage = () => {
                   </Button>
                 </motion.div>
 
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                {/* <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Button
                     onClick={handleGoogleAuth}
                     variant="outline"
@@ -351,7 +351,7 @@ const LandingPage = () => {
                     </svg>
                     Continue with Google
                   </Button>
-                </motion.div>
+                </motion.div> */}
               </>
             )}
           </motion.div>

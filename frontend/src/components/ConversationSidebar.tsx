@@ -16,18 +16,17 @@ interface Conversation {
 interface HistoryViewProps {
   conversations: Conversation[];
   currentConversationId: number | null;
-  onCreateNew: () => void;
-  onSwitchConversation: (id: number) => void;
-  onDeleteConversation: (id: number) => void;
-  onTabChange?: (tab: string) => void; // New prop to handle tab switching
+  onSwitchConversation: (conversationId: number) => void;
+  onDeleteConversation: (conversationId: number) => Promise<void>;
+  onCreateNew: () => Promise<void>;
+  onTabChange: (tab: string) => void;
 }
-
 const HistoryView: React.FC<HistoryViewProps> = ({
   conversations,
   currentConversationId,
-  onCreateNew,
   onSwitchConversation,
   onDeleteConversation,
+  onCreateNew,
   onTabChange
 }) => {
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -92,7 +91,7 @@ const HistoryView: React.FC<HistoryViewProps> = ({
   }, {} as Record<string, Conversation[]>);
 
   return (
-    <div className="h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 overflow-hidden">
+    <div className="h-full bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 mt-7">
       {/* Header */}
       <motion.div 
         className="p-6 border-b border-zinc-700/50 bg-zinc-800/50 backdrop-blur-sm"

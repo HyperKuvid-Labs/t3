@@ -266,7 +266,7 @@ const EmotionTokenPanel = ({ selectedEmotion, onEmotionSelect }: EmotionTokenPan
           y: 0, 
           scale: 1, 
           duration: 0.3, 
-          ease: "back.out(1.7)" 
+          ease: "back.out" 
         }
       );
     }

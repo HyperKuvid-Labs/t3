@@ -223,7 +223,7 @@ const AppBuilder = () => {
       opacity: 0,
       duration: 0.5,
       stagger: 0.05,
-      ease: "back.out(1.7)",
+      ease: "back.out",
       delay: 0.8
     });
   }, { scope: containerRef });
@@ -338,7 +338,7 @@ const AppBuilder = () => {
   };
 
   return (
-    <div ref={containerRef} className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950/20 to-slate-950">
+    <div ref={containerRef} className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950/20 to-slate-950 mt-10">
       {/* Animated Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-500/10 rounded-full blur-3xl animate-pulse"></div>
