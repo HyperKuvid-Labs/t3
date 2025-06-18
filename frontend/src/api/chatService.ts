@@ -2,7 +2,7 @@ import axios, { AxiosResponse } from 'axios';
 import { toast } from '@/hooks/use-toast';
 import { FileProcessor, ProcessedFile } from './fileProcessing';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = 'http://0.0.0.0:8000';
 
 axios.defaults.baseURL = API_BASE_URL;
 axios.defaults.withCredentials = true;
