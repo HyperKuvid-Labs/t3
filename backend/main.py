@@ -141,10 +141,21 @@ async def periodic_cleanup():
 
 @app.on_event("startup")
 async def startup():
-    await prisma.connect()
-    await load_models_in_db()
-    print("Successfully connected to Prisma database.")
-    asyncio.create_task(periodic_cleanup())
+    try:
+        import subprocess
+        import os
+        
+        binary_path = "/opt/render/.cache/prisma-python/binaries/5.17.0/393aa359c9ad4a4bb28630fb5613f9c281cde053/prisma-query-engine-debian-openssl-3.0.x"
+        if not os.path.exists(binary_path):
+            subprocess.run(["prisma", "py", "fetch"], check=True)
+        
+        await prisma.connect()
+        await load_models_in_db()
+        print("Successfully connected to Prisma database.")
+        asyncio.create_task(periodic_cleanup())
+    except Exception as e:
+        print(f"Database connection failed: {e}")
+        raise
 
 
 @app.on_event("shutdown")
