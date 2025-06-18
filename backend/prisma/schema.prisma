@@ -167,7 +167,7 @@ model TempMessage {
   isAiGenerated Boolean  @default(false)
   aiModelUsed   String?
   room          TempRoom @relation(fields: [roomId], references: [roomId], onDelete: Cascade)
-  user          User?     @relation("TempMessages", fields: [userEmail], references: [email])
+  user          User?    @relation("TempMessages", fields: [userEmail], references: [email])
 
   @@index([roomId])
   @@index([userEmail])
@@ -195,7 +195,7 @@ enum ModelNameOnline {
   gemini2_5_flash
   gemini2_5_pro
   deepseekv3
-  claude3_5
+  claude4_0
 }
 
 enum AuthProvider {

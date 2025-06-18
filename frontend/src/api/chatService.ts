@@ -115,6 +115,8 @@ export interface RoomInfo {
 const modelEndpoints = {
   'gemini-2.5-flash': '/query/gemini_flash',
   'gemini-2.5-pro': '/query/gemini_pro',
+  'claude-4.0-sonnet': '/query/claude_sonnet',
+  'deepseek-v3': '/query/deepseekv3',
   'ollama-gemma3': '/query/ollama_gemma3',
   'ollama-llama3': '/query/ollama_llama3',
   'ollama-deepseek': '/query/ollama_deepseek',
@@ -123,8 +125,13 @@ const modelEndpoints = {
 
 export type ModelType = keyof typeof modelEndpoints;
 
+const getApiKey = (provider: string): string | null => {
+  return localStorage.getItem(`apiKey_${provider.toLowerCase()}`);
+};
+
 export async function sendQueryToBackend(
   query: string,
+  previous_context: string, 
   emotion: string,
   model: string,
   currentConvId: number,
@@ -158,14 +165,35 @@ export async function sendQueryToBackend(
     throw new Error('Query cannot be empty');
   }
 
+  let apiKey = null;
+  if (model.includes('claude')) {
+    apiKey = getApiKey('anthropic');
+    if (!apiKey) {
+      throw new Error('Claude API key is required. Please select the model again to enter your API key.');
+    }
+  } else if (model.includes('deepseek')) {
+    apiKey = getApiKey('deepseek');
+    if (!apiKey) {
+      throw new Error('DeepSeek API key is required. Please select the model again to enter your API key.');
+    }
+  }
+
+  console.log("apiKey", apiKey)
+
+  // if (apiKey) {
+  //     requestBody.api_key = apiKey;
+  // }
+
   try {
     const response: AxiosResponse<ChatResponse> = await axios.post(
       modelEndpoints[model],
       {
         query: query.trim(),
+        previous_context: previous_context,
         emotion: emotion || '',
         webSearch: webSearch || false,
-        Conversation_id: currentConvId
+        Conversation_id: currentConvId,
+        apiKey : apiKey 
       },
       {
         headers: {

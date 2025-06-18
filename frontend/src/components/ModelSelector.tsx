@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChevronDown, Cpu, Zap, Sparkles, Clock, Database, Check } from 'lucide-react';
+import ApiKeyDialog from './ApiKeyDialog';
 
 interface Model {
   id: string;
@@ -40,8 +41,8 @@ export const models: Model[] = [
     category: "main",
   },
   {
-    id: "claude-3.5-sonnet",
-    name: "Claude 3.5 Sonnet",
+    id: "claude-4.0-sonnet",
+    name: "Claude 4.0 Sonnet",
     provider: "Anthropic",
     description: "Anthropic's flagship reasoning model",
     badge: "Popular",
@@ -108,6 +109,8 @@ const ModelSelector = ({ selectedModel, onModelSelect }: ModelSelectorProps) => 
   const [hoveredModel, setHoveredModel] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState(false);
+  const [selectedModelForApiKey, setSelectedModelForApiKey] = useState<Model | null>(null);
 
   // Memoize to prevent unnecessary re-renders
   const selectedModelData = useMemo(() => 
@@ -168,11 +171,36 @@ const ModelSelector = ({ selectedModel, onModelSelect }: ModelSelectorProps) => 
   // Debounced selection to prevent rapid updates
   const handleModelSelect = useCallback((modelId: string) => {
     if (modelId === selectedModel) return; // Prevent unnecessary updates
+
+    const model = models.find(m => m.id === modelId);
+
+    if (model && (model.provider === 'Anthropic' || model.provider === 'DeepSeek')) {
+    const storedKey = localStorage.getItem(`apiKey_${model.provider.toLowerCase()}`);
+    
+    if (!storedKey) {
+      setSelectedModelForApiKey(model);
+      setShowApiKeyDialog(true);
+      return;
+    }
+  }
     
     onModelSelect(modelId);
     setIsOpen(false);
     setSearchTerm('');
   }, [selectedModel, onModelSelect]);
+
+  const handleApiKeySubmit = (apiKey: string) => {
+    if (selectedModelForApiKey) {
+      // Store API key securely
+      localStorage.setItem(`apiKey_${selectedModelForApiKey.provider.toLowerCase()}`, apiKey);
+      
+      // Proceed with model selection
+      onModelSelect(selectedModelForApiKey.id);
+      setIsOpen(false);
+      setSearchTerm('');
+      setSelectedModelForApiKey(null);
+    }
+};
 
   const getSpeedIcon = useCallback((speed: string) => {
     switch (speed) {
@@ -353,6 +381,16 @@ const ModelSelector = ({ selectedModel, onModelSelect }: ModelSelectorProps) => 
           </motion.div>
         )}
       </AnimatePresence>
+      <ApiKeyDialog
+        isOpen={showApiKeyDialog}
+        onClose={() => {
+          setShowApiKeyDialog(false);
+          setSelectedModelForApiKey(null);
+        }}
+        onSubmit={handleApiKeySubmit}
+        modelName={selectedModelForApiKey?.name || ''}
+        provider={selectedModelForApiKey?.provider || ''}
+      />
     </div>
   );
 };

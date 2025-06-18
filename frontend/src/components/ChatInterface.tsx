@@ -326,7 +326,7 @@ const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
     }
 
     const previousContext = formatMessagesForContext(messages);
-    const fullPrompt = `Previous conversation:\n${previousContext}\n\nUser: ${inputValue}`;
+    // const fullPrompt = `Previous conversation:\n${previousContext}\n\nUser: ${inputValue}`;
 
     const messageId = Date.now().toString();
     const userMessage: Message = {
@@ -347,7 +347,6 @@ const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
     setAttachedFiles([]);
     setIsTyping(true);
 
-    // Animate message status changes
     setTimeout(() => {
       setMessages((prev) =>
         prev.map((msg) =>
@@ -357,9 +356,9 @@ const ChatInterface = ({ onTabChange }: ChatInterfaceProps = {}) => {
     }, 500);
 
     try {
-      // Send to backend
       const response: ChatResponse = await sendQueryToBackend(
-        fullPrompt,
+        inputValue,
+        previousContext,
         selectedEmotion || "",
         selectedModel,
         currentConversationId,

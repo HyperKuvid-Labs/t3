@@ -43,6 +43,7 @@ from email.mime.base import MIMEBase
 from email import encoders
 from email.mime.text import MIMEText
 import random
+from openai import OpenAI
 
 oauth = OAuth()
 
@@ -105,7 +106,7 @@ async def load_models_in_db():
             {"type": "online", "nameOnline": "gemini2_5_flash"},
             {"type": "online", "nameOnline": "gemini2_5_pro"},
             {"type": "online", "nameOnline": "deepseekv3"},
-            {"type": "online", "nameOnline": "claude3_5"},
+            {"type": "online", "nameOnline": "claude4_0"},
         ]
 
         ollama_models = [
@@ -225,6 +226,25 @@ app.add_middleware(SessionMiddleware,
                    same_site="lax",
                    https_only=True)
 
+async def run_ollama_async(model: str, prompt: str) -> str:
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "ollama", "run", model,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        
+        stdout, stderr = await process.communicate(input=prompt.encode())
+        
+        if process.returncode == 0:
+            return stdout.decode().strip()
+        else:
+            raise Exception(f"Ollama process failed: {stderr.decode()}")
+            
+    except Exception as e:
+        raise Exception(f"Failed to run Ollama: {str(e)}")
+
 async def generate_ai_conversation_name(query: str, response: str) -> str:
     prompt = f"""
     Based on this conversation starter, generate a short, descriptive title (3-6 words max):
@@ -240,11 +260,10 @@ async def generate_ai_conversation_name(query: str, response: str) -> str:
     Title:"""
     
     try:
-        model = await genai.GenerativeModel("gemini-1.5-flash-latest")
-        result = model.generate_content(prompt)
-        title = result.text.strip().replace('"', '').replace("Title:", "").strip()
+        title = await run_ollama_async("gemma3:27b", prompt)
+        title = title.strip().replace('"', '').replace("Title:", "").strip()
         return title[:50] 
-    except:
+    except Exception as e:
         return generate_conversation_name(query) 
     
 def generate_conversation_name(first_message: str, max_length: int = 50) -> str:
@@ -255,10 +274,11 @@ def generate_conversation_name(first_message: str, max_length: int = 50) -> str:
     
     return cleaned[:max_length-3] + "..."
 
-def gemini_flash_resp(query: str, emotion: str = "", search_context : str = "") -> str:
+def gemini_flash_resp(query: str, emotion: str = "", previous_context : str = "", search_context : str = "") -> str:
     
     prompt = (
         f"You are an AI assistant responding to the following user query:\n\n"
+        f"The conversation so far: {previous_context}\n\n"
         f'User\'s Query: "{query}"\n\n'
         "Please keep your answers brief, clear, and simple enough for a layman to understand. "
         "If the topic is technical, use analogies or simple language. "
@@ -287,8 +307,9 @@ def gemini_flash_resp(query: str, emotion: str = "", search_context : str = "") 
     return response.text
 
 
-def gemini_pro_resp(query: str, emotion: str, search_context : str):
+def gemini_pro_resp(query: str, emotion: str, previous_context : str, search_context : str):
     prompt = f"""
+        The conversation so far: {previous_context}\n\n
         This is the query from the user: {query}
 
         Imagine you are a genius and a friendly conversationalist.
@@ -318,6 +339,84 @@ def gemini_pro_resp(query: str, emotion: str, search_context : str):
 
     return resp.text
 
+def claude_sonnet_resp(previous_context: str, api_key: str, query: str, emotion: str, search_context : str):
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        
+        system_prompt = "You are Claude 4.0 Sonnet, an advanced AI with superior coding abilities, extended reasoning capabilities, precise instruction following, and enhanced tool use. You excel at complex problem-solving, agentic workflows, and maintaining context across long conversations with 200K token capacity and up to 64K output tokens."
+        if emotion:
+            system_prompt += (
+                f"\n\nThe user is feeling **{emotion}** right now. "
+                "Adapt your tone, word choice, and response style to align with this emotion."
+                f"And the search context is: {search_context}, if none, ignore."
+            )
+        
+        messages = []
+        if previous_context:
+            messages.append({"role": "assistant", "content": previous_context})
+        messages.append({"role": "user", "content": query})
+        
+        stream = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=1000,
+            temperature=0.7,
+            system=system_prompt,
+            messages=messages,
+            stream=True
+        )
+        
+        response_text = ""
+        for event in stream:
+            if event.type == "content_block_delta":
+                response_text += event.delta.text
+        
+        return response_text
+        
+    except Exception as e:
+        return f"Error: {str(e)}"
+    
+def deepseek_resp(previous_context: str, api_key: str, query: str, emotion: str, search_context: str):
+    try:
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.deepseek.com"
+        )
+        
+        system_prompt = "You are DeepSeek-V3, an advanced AI model with exceptional reasoning capabilities, superior coding performance, and strong mathematical problem-solving abilities. You excel at complex analysis, multi-step reasoning, and providing detailed technical explanations with high accuracy."
+        
+        if emotion:
+            system_prompt += (
+                f"\n\nThe user is feeling **{emotion}** right now. "
+                "Adapt your tone, word choice, and response style to align with this emotion. "
+                f"And the search context is: {search_context}, if none, ignore."
+            )
+        
+        messages = []
+        
+        messages.append({"role": "system", "content": system_prompt})
+        
+        if previous_context:
+            messages.append({"role": "assistant", "content": previous_context})
+        
+        messages.append({"role": "user", "content": query})
+        
+        stream = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=messages,
+            max_tokens=4000,
+            temperature=0.7,
+            stream=True
+        )
+        
+        response_text = ""
+        for chunk in stream:
+            if chunk.choices[0].delta.content is not None:
+                response_text += chunk.choices[0].delta.content
+        
+        return response_text
+        
+    except Exception as e:
+        return f"Error: {str(e)}"
 
 # def claude_resp(query : str, emotion : str):
 
@@ -328,7 +427,7 @@ def gemini_pro_resp(query: str, emotion: str, search_context : str):
 # 1. gemini 2.5 flash - gemma3
 # 2. gemini 2.5 pro - llama3.3:70b or qwen 2.5
 # 3. deepseekv3 - deepseek r1
-# 4. claude 3.5 - gemma  or phi4:14b
+# 4. claude 4.0 - gemma  or phi4:14b
 
 # this is according to my research, update this if you can find something better.
 
@@ -336,8 +435,9 @@ def gemini_pro_resp(query: str, emotion: str, search_context : str):
 
 # ollama models chosen - gemma3:27b, llama3.3:70b, deepseek-r1:70b, phi4:14b, need this for schema
 
-def ollama_gemma3_resp(query: str, emotion: str):
+def ollama_gemma3_resp(query: str, emotion: str, previous_context : str):
     prompt = f"""
+        The conversation so far: {previous_context}\n\n
         This is the query from the user: {query}
 
         Answer it more breifly and in a way any layman can understand if any complex topics arise.
@@ -369,8 +469,9 @@ def ollama_gemma3_resp(query: str, emotion: str):
         return f"There was some issue genrating the content with ollama gemma3: {result.stderr}"
 
 
-def ollama_llama3_resp(query: str, emotion: str):
+def ollama_llama3_resp(query: str, emotion: str, previous_context : str):
     prompt = f"""
+        The conversation so far: {previous_context}\n\n
         This is the query from the user: {query}
 
         Imagine you are a genius and a friendly conversationalist.
@@ -401,8 +502,9 @@ def ollama_llama3_resp(query: str, emotion: str):
         return f"There was some issue genrating the content with ollama llama3: {result.stderr}"
 
 
-def ollama_deepseek_resp(query: str, emotion: str):
+def ollama_deepseek_resp(query: str, emotion: str, previous_context : str):
     prompt = f"""
+        The conversation so far: {previous_context}\n\n
         This is the query from the user: {query}
 
         You are DeepSeek — sharp, calm, and precise, with a hint of Chinese-accented clarity.
@@ -432,8 +534,9 @@ def ollama_deepseek_resp(query: str, emotion: str):
         return f"There was some issue genrating the content with ollama deepseek: {result.stderr}"
 
 
-def ollama_phi_resp(query: str, emotion: str):
+def ollama_phi_resp(query: str, emotion: str, previous_context : str):
     prompt = f"""
+        The conversation so far: {previous_context}\n\n
         This is the query from the user: {query}
 
         You are concise, warm, and highly efficient in communication.
@@ -625,9 +728,11 @@ async def google_web_search(query: str, api_key: str, cse_id: str, num_results: 
 
 class ConvoModel(BaseModel):
     query : str
+    previous_context : str
     emotion : str = ""
     webSearch : bool = False
-    Conversation_id : int
+    Conversation_id : int 
+    apiKey : str
 
 async def welcome(current_user: User = Depends(get_current_user_flexible)):
     return {
@@ -638,15 +743,17 @@ async def welcome(current_user: User = Depends(get_current_user_flexible)):
 
 
 async def get_model_by_name(model_type: str, model_name: str) -> int:
+    # model = None
     try:
         if model_type == "online":
             model = await prisma.model.find_first(where={"nameOnline": model_name})
+            # if(model)
         else:
             model = await prisma.model.find_first(where={"name": model_name})
     except Exception as e:
         print(e)
 
-    # print(model)
+    print(model)
 
     if not model:
         print(model_name)
@@ -655,7 +762,6 @@ async def get_model_by_name(model_type: str, model_name: str) -> int:
         )
 
     return model.modelId
-
 
 async def get_default_conversation(user_id: int) -> int:
     conversation = await prisma.conversation.find_first(
@@ -675,6 +781,7 @@ async def query_gemini_flash(
     data : ConvoModel, current_user: User = Depends(get_current_user)
 ):
     query = data.query
+    previous_context = data.previous_context
     emotion = data.emotion
     webSearch = data.webSearch
     conversation_id = data.Conversation_id
@@ -704,7 +811,7 @@ async def query_gemini_flash(
     except Exception as e:
         print(e)
 
-    response = gemini_flash_resp(query, emotion, search_context=search_context)
+    response = gemini_flash_resp(query, emotion, previous_context, search_context=search_context)
 
     model_id = await get_model_by_name("online", "gemini2_5_flash")
 
@@ -743,6 +850,7 @@ async def query_gemini_pro(
     data: ConvoModel, current_user: User = Depends(get_current_user)
 ):
     query = data.query
+    previous_context = data.previous_context
     emotion = data.emotion
     webSearch = data.webSearch
     conversation_id = data.Conversation_id
@@ -762,7 +870,6 @@ async def query_gemini_pro(
             detail="Conversation not found or access denied"
         )
 
-    # search_context = ""
     try:
         if webSearch:
             search_results = await google_web_search(query, GOOGLE_API_KEY, GOOGLE_SEARCH_ENGINE_ID)
@@ -773,7 +880,7 @@ async def query_gemini_pro(
     except Exception as e:
         print(e)
 
-    response = gemini_pro_resp(query, emotion, search_context)
+    response = gemini_pro_resp(query, emotion, previous_context, search_context)
     model_id = await get_model_by_name("online", "gemini2_5_pro")   
 
     existing_queries = await prisma.queryresp.count(
@@ -807,12 +914,180 @@ async def query_gemini_pro(
         "conversation_id": conversation_id,
     }
 
+@app.post("/query/claude_sonnet")
+async def query_claude_sonnet(
+    data: ConvoModel, current_user: User = Depends(get_current_user)
+):
+    conversation_id = data.Conversation_id
+    api_key = data.apiKey
+    query = data.query
+    emotion = data.emotion
+    webSearch = data.webSearch
+    previous_context = data.previous_context
+
+    print(api_key)
+
+    if(api_key == ""):
+        raise HTTPException(
+            status_code=400,
+            detail="API key not found"
+        )
+    
+    search_context = ""
+
+    conversation = await prisma.conversation.find_first(
+        where={
+            "id": conversation_id,
+            "users": {"some": {"id": current_user.id}}
+        }
+    )
+    
+    if not conversation:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found or access denied"
+        )
+
+    try:
+        if webSearch:
+            search_results = await google_web_search(query, GOOGLE_API_KEY, GOOGLE_SEARCH_ENGINE_ID)
+            if search_results and isinstance(search_results, list):
+                search_context = "\n\nWeb Search Results:\n"
+                for i, result in enumerate(search_results[:3], 1):
+                    search_context += f"{i}. {result['title']}\n{result['snippet']}\n{result['link']}\n\n"
+    except Exception as e:
+        print(e)
+
+    response = claude_sonnet_resp(previous_context, api_key, query, emotion, search_context)
+    model_id = await get_model_by_name("online", "claude4_0")
+
+    if "Error" in response:
+        raise HTTPException(
+            status_code=400,
+            detail="Error in API KEY or Claude API request"
+        )
+    
+    existing_queries = await prisma.queryresp.count(
+        where={"conversationId": conversation_id}
+    )
+    
+    if existing_queries == 0:
+        new_name = await generate_ai_conversation_name(query=query, response=response)
+        await prisma.conversation.update(
+            where={"id": conversation_id},
+            data={"roomName": new_name}
+        )
+
+    query_resp = await prisma.queryresp.create(
+        data={
+            "query": query,
+            "result": response,
+            "userId": current_user.id,
+            "modelId": model_id,
+            "conversationId": conversation_id,
+        }
+    )
+
+
+    return {
+        "query": query,
+        "response": response,
+        "model": "gemini_pro",
+        "user": current_user.email,
+        "query_id": query_resp.id,
+        "conversation_id": conversation_id,
+    }
+
+@app.post("/query/deepseekv3")
+async def query_deepseekv3(
+    data: ConvoModel, current_user: User = Depends(get_current_user)
+):
+    conversation_id = data.Conversation_id
+    api_key = data.apiKey
+    query = data.query
+    emotion = data.emotion
+    webSearch = data.webSearch
+    previous_context = data.previous_context
+
+    if(api_key == ""):
+        raise HTTPException(
+            status_code=404,
+            detail="API key not found"
+        )
+    
+    search_context = ""
+
+    conversation = await prisma.conversation.find_first(
+        where={
+            "id": conversation_id,
+            "users": {"some": {"id": current_user.id}}
+        }
+    )
+    
+    if not conversation:
+        raise HTTPException(
+            status_code=404,
+            detail="Conversation not found or access denied"
+        )
+
+    try:
+        if webSearch:
+            search_results = await google_web_search(query, GOOGLE_API_KEY, GOOGLE_SEARCH_ENGINE_ID)
+            if search_results and isinstance(search_results, list):
+                search_context = "\n\nWeb Search Results:\n"
+                for i, result in enumerate(search_results[:3], 1):
+                    search_context += f"{i}. {result['title']}\n{result['snippet']}\n{result['link']}\n\n"
+    except Exception as e:
+        print(e)
+
+    response = deepseek_resp(previous_context, api_key, query, emotion, search_context)
+    model_id = await get_model_by_name("online", "deepseekv3")
+
+    if "Error" in response:
+        raise HTTPException(
+            status_code=400,
+            detail="Error in API KEY"
+        )
+    
+    existing_queries = await prisma.queryresp.count(
+        where={"conversationId": conversation_id}
+    )
+    
+    if existing_queries == 0:
+        new_name = await generate_ai_conversation_name(query=query, response=response)
+        await prisma.conversation.update(
+            where={"id": conversation_id},
+            data={"roomName": new_name}
+        )
+
+    query_resp = await prisma.queryresp.create(
+        data={
+            "query": query,
+            "result": response,
+            "userId": current_user.id,
+            "modelId": model_id,
+            "conversationId": conversation_id,
+        }
+    )
+
+
+    return {
+        "query": query,
+        "response": response,
+        "model": "gemini_pro",
+        "user": current_user.email,
+        "query_id": query_resp.id,
+        "conversation_id": conversation_id,
+    }
+
+
 @app.post("/query/ollama_gemma3")
 async def query_ollama_gemma3(
     data: ConvoModel, current_user: User = Depends(get_current_user)
 ):
     conversation_id = data.Conversation_id
-    response = ollama_gemma3_resp(data.query, data.emotion)
+    previous_context = data.previous_context
+    response = ollama_gemma3_resp(data.query, data.emotion, previous_context)
 
     model_id = await get_model_by_name("ollama", "gemma3_27b")
     existing_queries = await prisma.queryresp.count(
@@ -852,7 +1127,8 @@ async def query_ollama_llama3(
     data: ConvoModel, current_user: User = Depends(get_current_user)
 ):
     conversation_id = data.Conversation_id
-    response = ollama_llama3_resp(data.query, data.emotion)
+    previous_context = data.previous_context
+    response = ollama_llama3_resp(data.query, data.emotion, previous_context)
 
     model_id = await get_model_by_name("ollama", "llama3_3_70b")
 
@@ -892,7 +1168,8 @@ async def query_ollama_deepseek(
     data: ConvoModel, current_user: User = Depends(get_current_user)
 ):
     conversation_id = data.Conversation_id
-    response = ollama_deepseek_resp(data.query, data.emotion)
+    previous_context = data.previous_context
+    response = ollama_deepseek_resp(data.query, data.emotion, previous_context)
 
     model_id = await get_model_by_name("ollama", "deepseek_r1_70b")
 
@@ -932,7 +1209,8 @@ async def query_ollama_phi(
     data: ConvoModel, current_user: User = Depends(get_current_user)
 ):
     conversation_id = data.Conversation_id
-    response = ollama_phi_resp(data.query, data.emotion)
+    previous_context = data.previous_context
+    response = ollama_phi_resp(data.query, data.emotion, previous_context)
 
     model_id = await get_model_by_name("ollama", "phi4_14b")
 
