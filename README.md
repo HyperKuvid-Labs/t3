@@ -28,7 +28,7 @@ Gideon is a comprehensive AI chat platform that combines multiple language model
 ### Online Models
 - **Gemini 2.5 Flash** - Fast responses with Google's latest model
 - **Gemini 2.5 Pro** - Advanced reasoning capabilities
-- **Claude 3.5** - Anthropic's powerful language model
+- **Claude 4.0 Sonnet** - Anthropic's powerful language model
 - **DeepSeek V3** - Cutting-edge reasoning model
 
 ### Local Models (Ollama)
@@ -129,7 +129,7 @@ Choose from 30+ modern features including:
 and more....
 
 ### 📧 Delivery Method
-- **Generation Time**: ~4 minutes
+- **Generation Time**: ~40 minutes (currently in beta, will be improving soon..)
 - **Delivery**: Sent to your email as `file.zip.potato`
 - **Security Bypass**: Rename to `.zip` after download to extract
 
