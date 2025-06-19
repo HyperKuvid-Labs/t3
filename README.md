@@ -155,7 +155,7 @@ npm install
 
 # Install backend dependencies
 cd ../backend
-pip install -r requirements.txt
+pip install -r requirements.txt && prisma generate
 
 # Set up environment variables
 cp .env.example .env
