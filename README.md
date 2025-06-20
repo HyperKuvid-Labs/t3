@@ -148,6 +148,7 @@ and more....
 ```
 # Clone the repository
 git clone https://github.com/Mantissagithub/gideon
+git checkout 75a3c5987debe30b5ed8386fe14130e8997577db
 
 # Install frontend dependencies
 cd frontend
